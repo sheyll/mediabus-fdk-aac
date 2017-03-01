@@ -1,0 +1,66 @@
+name:                mediabus-fdk-aac
+version:             0.2.0.0
+synopsis:            Mediabus plugin for the Frauenhofer ISO-14496-3 AAC FDK
+description:         Please see README.md
+homepage:            https://github.com/lindenbaum/mediabus-fdk-aac
+license:             BSD3
+license-file:        LICENSE
+author:              Sven Heyll
+maintainer:          sven.heyll@lindenbaum.eu
+copyright:           2016, 2017 Sven Heyll, Lindenbaum GmbH
+category:            Sound
+build-type:          Simple
+cabal-version:       >=1.10
+
+library
+  hs-source-dirs:      src
+  exposed-modules:     Data.MediaBus.Audio.FdkAac.EncoderFdkWrapper
+  default-language:    Haskell2010
+  ghc-options:       -O2 -Wall -funbox-strict-fields -fno-warn-unused-do-bind -fprint-explicit-kinds
+  default-extensions:  BangPatterns
+                     , ConstraintKinds
+                     , CPP
+                     , DataKinds
+                     , DefaultSignatures
+                     , DeriveDataTypeable
+                     , DeriveFunctor
+                     , DeriveGeneric
+                     , DuplicateRecordFields
+                     , FlexibleInstances
+                     , FlexibleContexts
+                     , FunctionalDependencies
+                     , GADTs
+                     , GeneralizedNewtypeDeriving
+                     , KindSignatures
+                     , MultiParamTypeClasses
+                     , NamedFieldPuns
+                     , OverloadedStrings
+                     , QuasiQuotes
+                     , RecordWildCards
+                     , RankNTypes
+                     , ScopedTypeVariables
+                     , StandaloneDeriving
+                     , TemplateHaskell
+                     , TupleSections
+                     , TypeApplications
+                     , TypeFamilies
+                     , TypeInType
+                     , TypeOperators
+                     , TypeSynonymInstances
+                     , UnicodeSyntax
+  build-depends:       base >= 4.9 && < 5
+                     , bytestring
+                     , containers
+                     , inline-c
+                     , random
+                     , mediabus
+                     , spool
+                     , time
+                     , text
+                     , vector
+  c-sources:         src/Data/MediaBus/Audio/FdkAac/EncoderFdkWrapper.c
+  -- These flags will be passed to the C compiler
+  cc-options:          -std=c99 -Wall -O2
+  -- Libraries to link the code with.
+  extra-libraries:     m
+  PkgConfig-Depends:   fdk-aac >= 0.1.4
