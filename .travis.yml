@@ -14,7 +14,7 @@ before_install:
   - chmod a+x ~/.local/bin/stack
   - wget https://github.com/mstorsjo/fdk-aac/archive/v0.1.4.tar.gz
   - tar -xzvf v0.1.4.tar.gz
-  - pushd fdk-aac-0.1.4 && ./configure --prefix=/usr && make && sudo make install
+  - pushd fdk-aac-0.1.4 && ./autogen.sh && ./configure --prefix=/usr && make && sudo make install
 
 install:
   - stack -j 2 setup --no-terminal
