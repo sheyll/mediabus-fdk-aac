@@ -1,18 +1,20 @@
 language: c
 
-sudo: false
+sudo: required
 cache:
   directories:
   - $HOME/.stack/
 
 before_install:
+  - sudo apt-get -qq update
+  - sudo apt-get install -y libgmp-dev
   - mkdir -p ~/.local/bin
   - export PATH=~/.local/bin:$PATH
   - travis_retry curl -L https://www.stackage.org/stack/linux-x86_64 | tar -xzO --wildcards '*/stack' > ~/.local/bin/stack
   - chmod a+x ~/.local/bin/stack
   - wget https://github.com/mstorsjo/fdk-aac/archive/v0.1.4.tar.gz
   - tar -xzvf v0.1.4.tar.gz
-  - pushd fdk-aac-0.1.4 && ./configure --prefix=/usr && make && sudo make install
+  - pushd fdk-aac-0.1.4 && ./autogen.sh && ./configure --prefix=/usr && make && sudo make install
 
 install:
   - stack -j 2 setup --no-terminal
