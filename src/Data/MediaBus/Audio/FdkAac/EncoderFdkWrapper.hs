@@ -10,6 +10,7 @@ module Data.MediaBus.Audio.FdkAac.EncoderFdkWrapper
     , EncodeResult(..)
     , EncodeFailure(..)
     , encode
+    , flush
     , destroy
     ) where
 
@@ -317,6 +318,59 @@ encode MkEncoderState{encoderHandle,unsafeOutBuffer,channelCount} !vec = do
             return $
                 Right MkEncodeResult { encodeResultConsumedFrames = consumedFrames
                                      , encodeResultLeftOverInput = coerce leftOverInput
+                                     , encodeResultSamples = coerce encodedOutput
+                                     }
+
+flush :: EncoderState -> IO (Either EncodeFailure EncodeResult)
+flush MkEncoderState{encoderHandle,unsafeOutBuffer} = do
+    ((numOutBytes, numAncBytes), retCode) <- C.withPtrs $
+                                            \(numOutBytesP, numAncBytesP) ->
+                                              [C.block| int {
+            AACENC_ERROR e;
+            HANDLE_AACENCODER phAacEncoder = (HANDLE_AACENCODER) $(uintptr_t encoderHandle);
+
+            /* Input buffer */
+            AACENC_BufDesc inBuffDesc = NULL;
+            AACENC_InArgs inArgs         =
+              { .numInSamples = -1
+              , .numAncBytes = 0 };
+
+            /* Ouput buffer */
+            AACENC_BufDesc outBuffDesc;
+            outBuffDesc.numBufs           = 1;
+            outBuffDesc.bufs              = {$vec-ptr:(unsigned char *unsafeOutBuffer)};
+            outBuffDesc.bufferIdentifiers = {OUT_BITSTREAM_DATA};
+            outBuffDesc.bufSizes          = {$vec-len:unsafeOutBuffer};
+            outBuffDesc.bufElSizes        = {1};
+            AACENC_OutArgs outArgs;
+
+            e = aacEncEncode (phAacEncoder, &inBuffDesc, &outBuffDesc,
+                              &inArgs, &outArgs);
+            *($(int* numOutBytesP))  = outArgs.numOutBytes;
+            *($(int* numAncBytesP))  = outArgs.numAncBytes;
+
+            return e;
+      } |]
+    if toAacEncErrorCode retCode /= AacEncEncodeEof
+        then return $
+            Left MkEncodeFailure { encodeFailureCode = toAacEncErrorCode retCode
+                                 , encodeFailureNumOutBytes = fromIntegral numOutBytes
+                                 , encodeFailureNumInSamples = -1
+                                 , encodeFailureNumAncBytes = fromIntegral numAncBytes
+                                 }
+        else do
+            let !numOutBytesI = fromIntegral numOutBytes
+            !encodedOutput <- if numOutBytesI == 0
+                              then return Nothing
+                              else do
+                                  !outTooLarge <- V.freeze unsafeOutBuffer
+                                  return $
+                                      Just $
+                                          V.force $
+                                              V.slice 0 numOutBytesI outTooLarge
+            return $
+                Right MkEncodeResult { encodeResultConsumedFrames = -1
+                                     , encodeResultLeftOverInput = Nothing
                                      , encodeResultSamples = coerce encodedOutput
                                      }
 
