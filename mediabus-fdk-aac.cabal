@@ -14,7 +14,8 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Data.MediaBus.Audio.FdkAac.EncoderFdkWrapper
+  exposed-modules:     Data.MediaBus.Audio.FdkAac.Encoder
+                     , Data.MediaBus.Audio.FdkAac.EncoderFdkWrapper
   default-language:    Haskell2010
   ghc-options:       -O2 -Wall -funbox-strict-fields -fno-warn-unused-do-bind -fprint-explicit-kinds
   default-extensions:  BangPatterns
@@ -50,13 +51,17 @@ library
                      , UnicodeSyntax
   build-depends:       base >= 4.9 && < 5
                      , bytestring
+                     , conduit
+                     , conduit-combinators
                      , containers
                      , inline-c
-                     , random
+                     , lens
                      , mediabus
+                     , random
+                     , resourcet
                      , spool
-                     , time
                      , text
+                     , time
                      , vector
   c-sources:         src/Data/MediaBus/Audio/FdkAac/EncoderFdkWrapper.c
   -- These flags will be passed to the C compiler
