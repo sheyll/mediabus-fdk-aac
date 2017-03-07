@@ -1,5 +1,5 @@
 name:                mediabus-fdk-aac
-version:             0.2.0.0
+version:             0.3.0.0
 synopsis:            Mediabus plugin for the Frauenhofer ISO-14496-3 AAC FDK
 description:         Please see README.md
 homepage:            https://github.com/lindenbaum/mediabus-fdk-aac
@@ -62,6 +62,7 @@ library
                      , spool
                      , text
                      , time
+                     , transformers
                      , vector
   c-sources:         src/Data/MediaBus/Audio/FdkAac/EncoderFdkWrapper.c
   -- These flags will be passed to the C compiler
