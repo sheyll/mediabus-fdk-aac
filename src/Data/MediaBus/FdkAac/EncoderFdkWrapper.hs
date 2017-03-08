@@ -1,5 +1,5 @@
 -- | An internal module that tightly wraps around t Frauenhofer Development Toolkit.
-module Data.MediaBus.Audio.FdkAac.EncoderFdkWrapper
+module Data.MediaBus.FdkAac.EncoderFdkWrapper
   ( AacEncErrorCode(..)
   , toAacEncErrorCode
   , simpleConfig
@@ -16,6 +16,7 @@ module Data.MediaBus.Audio.FdkAac.EncoderFdkWrapper
   ) where
 
 import Data.Coerce
+import Data.Int
 import Data.Monoid
 import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Storable.Mutable as VM
@@ -106,10 +107,12 @@ create MkConfig { configModules
                 *($(int* aacEncoderCfgErrorP)) = 6;
                 goto e1;
               }
-              e = aacEncoder_SetParam(phAacEncoder, AACENC_BANDWIDTH, (const UINT) $(unsigned int configBandwidth));
-              if (e != AACENC_OK) {
-                *($(int* aacEncoderCfgErrorP)) = 7;
-                goto e1;
+              if ((const UINT) $(unsigned int configBandwidth) != 0) {
+                e = aacEncoder_SetParam(phAacEncoder, AACENC_BANDWIDTH, (const UINT) $(unsigned int configBandwidth));
+                if (e != AACENC_OK) {
+                  *($(int* aacEncoderCfgErrorP)) = 7;
+                  goto e1;
+                }
               }
               e = aacEncoder_SetParam(phAacEncoder, AACENC_TRANSMUX, TT_MP4_RAW); // TODO extract from TRANSPORT_TYPE in FDK_audio.h
               if (e != AACENC_OK) {
@@ -185,7 +188,9 @@ data Config = MkConfig
   , configSampleRate :: !CUInt
   , configBitRate :: !CUInt
   , configBitRateMode :: !CUInt
-  , configBandwidth :: !CUInt
+  , configBandwidth :: !CUInt -- ^ The audio frequency bandwidth to be considered
+                             -- when compressing audio, if @0@ the setting is
+                             -- not applied.
   , configSbrMode :: !CUInt
   , configSignallingMode :: !CUInt
   , configChannelMode :: !CUInt
@@ -206,17 +211,17 @@ simpleConfig !aot !channels !sampleRate =
           (fromIntegral configSampleRate *
            ((if highEfficiency
                then 0.625
-               else 1.5) :: Double) --
-           )
+               else 1.5) :: Double --
+            ))
       !configBitRateMode = 0
-      !configBandwidth = 8000
+      !configBandwidth = 0
       !configSbrMode = fromIntegral (fromEnum highEfficiency)
       !configSignallingMode =
         if highEfficiency
           then 2
           else 0
       !configChannelMode = fromIntegral channels
-      !configAfterburner = 0
+      !configAfterburner = 1
   in MkConfig
      { configModules
      , configChannels
@@ -264,14 +269,12 @@ data Encoder = MkEncoder
   }
 
 -- | Encode Samples.
-encode :: Encoder
-       -> V.Vector Word16
-       -> IO (Either EncodeFailure EncodeResult)
-encode MkEncoder {encoderHandle, unsafeOutBuffer, channelCount} !vecW16 = do
+encode :: Encoder -> V.Vector Word16 -> IO (Either EncodeFailure EncodeResult)
+encode enc@MkEncoder {encoderHandle, unsafeOutBuffer, channelCount} !vecW16 = do
   let vec = coerce vecW16
-  ((numOutBytes, numInSamples, numAncBytes), retCode) <-
-    C.withPtrs $ \(numOutBytesP, numInSamplesP, numAncBytesP) ->
-      [C.block| int {
+  toEncodeResult vec enc =<<
+    (C.withPtrs $ \(numOutBytesP, numInSamplesP, numAncBytesP) ->
+       [C.block| int {
             AACENC_ERROR e;
             HANDLE_AACENCODER phAacEncoder = (HANDLE_AACENCODER) $(uintptr_t encoderHandle);
 
@@ -310,7 +313,53 @@ encode MkEncoder {encoderHandle, unsafeOutBuffer, channelCount} !vecW16 = do
             *($(int* numAncBytesP))  = outArgs.numAncBytes;
 
             return e;
-         }|]
+         }|])
+
+-- | Encode the contents of the delay lines of the encoder.
+flush :: Encoder -> IO (Either EncodeFailure EncodeResult)
+flush enc@(MkEncoder {encoderHandle, unsafeOutBuffer}) = do
+  toEncodeResult mempty enc =<<
+    (C.withPtrs $ \(numOutBytesP, numInSamplesP, numAncBytesP) ->
+      [C.block| int {
+            AACENC_ERROR e;
+            HANDLE_AACENCODER phAacEncoder = (HANDLE_AACENCODER) $(uintptr_t encoderHandle);
+
+            /* Input buffer */
+            AACENC_BufDesc inBuffDesc;
+            inBuffDesc.numBufs           = 0;
+
+            AACENC_InArgs inArgs =
+              { .numInSamples = -1
+              , .numAncBytes = 0 };
+
+            AACENC_BufDesc outBuffDesc;
+            INT outBuffIds[1]             = {OUT_BITSTREAM_DATA};
+            INT outBuffSizes[1]           = {$vec-len:unsafeOutBuffer};
+            INT outBuffElSizes[1]         = {1};
+            void* outBuffBuffers[1]       = {$vec-ptr:(unsigned char *unsafeOutBuffer)};
+            outBuffDesc.numBufs           = 1;
+            outBuffDesc.bufs              = outBuffBuffers;
+            outBuffDesc.bufferIdentifiers = outBuffIds;
+            outBuffDesc.bufSizes          = outBuffSizes;
+            outBuffDesc.bufElSizes        = outBuffElSizes;
+            AACENC_OutArgs outArgs;
+
+            e = aacEncEncode (phAacEncoder, &inBuffDesc, &outBuffDesc,
+                              &inArgs, &outArgs);
+            *($(int* numOutBytesP))  = outArgs.numOutBytes;
+            *($(int* numInSamplesP)) = outArgs.numInSamples;
+            *($(int* numAncBytesP))  = outArgs.numAncBytes;
+
+            return e;
+      } |])
+
+-- | Internal function
+toEncodeResult
+  :: V.Vector C.CShort
+  -> Encoder
+  -> ((C.CInt , C.CInt, C.CInt), CInt)
+  -> IO (Either EncodeFailure EncodeResult)
+toEncodeResult vec MkEncoder {unsafeOutBuffer, channelCount} ((numOutBytes, numInSamples, numAncBytes), retCode) =
   if retCode /= 0
     then return $
          Left
@@ -345,84 +394,40 @@ encode MkEncoder {encoderHandle, unsafeOutBuffer, channelCount} !vecW16 = do
           , encodeResultSamples = coerce encodedOutput
           }
 
-flush :: Encoder -> IO (Either EncodeFailure EncodeResult)
-flush MkEncoder {encoderHandle, unsafeOutBuffer} = do
-  ((numOutBytes, numAncBytes), retCode) <-
-    C.withPtrs $ \(numOutBytesP, numAncBytesP) ->
-      [C.block| int {
-            AACENC_ERROR e;
-            HANDLE_AACENCODER phAacEncoder = (HANDLE_AACENCODER) $(uintptr_t encoderHandle);
-
-            /* Input buffer */
-            AACENC_BufDesc inBuffDesc;
-            inBuffDesc.numBufs           = -1;
-
-
-            AACENC_InArgs inArgs =
-              { .numInSamples = -1
-              , .numAncBytes = 0 };
-
-            AACENC_BufDesc outBuffDesc;
-            INT outBuffIds[1]             = {OUT_BITSTREAM_DATA};
-            INT outBuffSizes[1]           = {$vec-len:unsafeOutBuffer};
-            INT outBuffElSizes[1]         = {1};
-            void* outBuffBuffers[1]       = {$vec-ptr:(unsigned char *unsafeOutBuffer)};
-            outBuffDesc.numBufs           = 1;
-            outBuffDesc.bufs              = outBuffBuffers;
-            outBuffDesc.bufferIdentifiers = outBuffIds;
-            outBuffDesc.bufSizes          = outBuffSizes;
-            outBuffDesc.bufElSizes        = outBuffElSizes;
-            AACENC_OutArgs outArgs;
-
-            e = aacEncEncode (phAacEncoder, &inBuffDesc, &outBuffDesc,
-                              &inArgs, &outArgs);
-            *($(int* numOutBytesP))  = outArgs.numOutBytes;
-            *($(int* numAncBytesP))  = outArgs.numAncBytes;
-
-            return e;
-      } |]
-  if toAacEncErrorCode retCode /= AacEncEncodeEof
-    then return $
-         Left
-           MkEncodeFailure
-           { encodeFailureCode = toAacEncErrorCode retCode
-           , encodeFailureNumOutBytes = fromIntegral numOutBytes
-           , encodeFailureNumInSamples = -1
-           , encodeFailureNumAncBytes = fromIntegral numAncBytes
-           }
-    else do
-      let !numOutBytesI = fromIntegral numOutBytes
-      !encodedOutput <-
-        if numOutBytesI == 0
-          then return Nothing
-          else do
-            !outTooLarge <- V.freeze unsafeOutBuffer
-            return $ Just $ V.force $ V.slice 0 numOutBytesI outTooLarge
-      return $
-        Right
-          MkEncodeResult
-          { encodeResultConsumedFrames = -1
-          , encodeResultLeftOverInput = Nothing
-          , encodeResultSamples = coerce encodedOutput
-          }
-
+-- | Result of 'encode'
 data EncodeResult = MkEncodeResult
-  { encodeResultConsumedFrames :: !Word64
-  , encodeResultLeftOverInput :: !(Maybe (V.Vector Word16))
-  , encodeResultSamples :: !(Maybe (V.Vector Word8))
+  { encodeResultConsumedFrames :: !Word64 -- ^ Number of samples from the input
+                                         -- that were processed by the encoder
+  , encodeResultLeftOverInput :: !(Maybe (V.Vector Word16)) -- ^ The unprocessed
+                                                           -- rest of the input.
+                                                           -- Only if the input
+                                                           -- is larger than the
+                                                           -- encoders frame
+                                                           -- length a left over
+                                                           -- is returned.
+  , encodeResultSamples :: !(Maybe (V.Vector Word8)) -- ^ Encoded output. If less
+                                                    -- than the frame length
+                                                    -- samples have been
+                                                    -- encoded, then the result
+                                                    -- will be 'Nothing'
+                                                    -- otherwise it is the
+                                                    -- encoded AAC content
+                                                    -- representing the encded
+                                                    -- samples delayed by
+                                                    -- 'frameLength'.
   }
 
 data EncodeFailure = MkEncodeFailure
   { encodeFailureCode :: !AacEncErrorCode
   , encodeFailureNumOutBytes :: !Word64
-  , encodeFailureNumInSamples :: !Word64
+  , encodeFailureNumInSamples :: !Int16
   , encodeFailureNumAncBytes :: !Word64
   } deriving (Eq)
 
 instance Show EncodeFailure where
   show MkEncodeFailure {..} =
     printf
-      "FDK AAC encode error: %s, numOutBytes:  %d, numInSamples: %d, numAncBytes: %d"
+      "(FDK AAC encode error: %s, numOutBytes:  %d, numInSamples: %d, numAncBytes: %d)"
       (show encodeFailureCode)
       encodeFailureNumOutBytes
       encodeFailureNumInSamples

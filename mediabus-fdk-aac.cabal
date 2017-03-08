@@ -14,10 +14,10 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Data.MediaBus.Audio.FdkAac.Encoder
-                     , Data.MediaBus.Audio.FdkAac.EncoderFdkWrapper
+  exposed-modules:     Data.MediaBus.FdkAac.Encoder
+  other-modules:       Data.MediaBus.FdkAac.EncoderFdkWrapper
   default-language:    Haskell2010
-  ghc-options:       -O2 -Wall -funbox-strict-fields -fno-warn-unused-do-bind -fprint-explicit-kinds
+  ghc-options:       -O2 -Wall -funbox-strict-fields -fno-warn-unused-do-bind
   default-extensions:  BangPatterns
                      , ConstraintKinds
                      , CPP
@@ -64,7 +64,7 @@ library
                      , time
                      , transformers
                      , vector
-  c-sources:         src/Data/MediaBus/Audio/FdkAac/EncoderFdkWrapper.c
+  c-sources:         src/Data/MediaBus/FdkAac/EncoderFdkWrapper.c
   -- These flags will be passed to the C compiler
   cc-options:          -std=c99 -Wall -O2
   -- Libraries to link the code with.
