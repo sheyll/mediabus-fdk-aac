@@ -9,3 +9,73 @@ Currently only encoding is supported.
 
 This library requires that this C-library including the header files is
 installed and can by queried via `pkg-config`.
+
+
+## Usage Example
+
+The easiest way to use this package is via the `Conduit` interface.
+An example is found in [examples/Main.hs](http://github.com/lindenbaum/mediabus-fdk-aac/blob/master/examples/Main.hs).
+
+Encoding via the conduit interface basically boils down to:
+
+
+```haskell
+
+     .| encodeLinearToAacC (aacEncoderConfig aacHe48KhzStereo)
+
+```
+
+In this specific case `encodeLinearToAacC` has the type:
+
+
+```haskell
+  Conduit
+          (Stream SrcId32                                      -- Input: The Stream id is a 'SrcId32'
+                  SeqNum16                                     -- 16 bit frame sequence numbers
+                  (Ticks64 (Hz 48000))                         -- 64 bit frame timestamps at 48kHz sample rate
+                  ()                                           -- There is not stream-info
+                  (Audio (Hz 48000) Stereo (Raw S16)))         -- The media is linear signed 16bit stereo
+
+          (ResourceT (LoggingT IO))                            -- Monad: Logging and Resource management over IO
+
+          (Stream SrcId32                                             -- Output:
+                  SeqNum16
+                  (Ticks64 (Hz 48000))               
+                  (AacEncoderInfo (Hz 48000) Stereo 'HighEfficiency)  -- Stream info record
+                  (Audio (Hz 48000) Stereo (Aac 'HighEfficiency)))    -- AAC-HE audio output
+```
+
+Here is the complete code:
+
+```haskell
+module Main
+  ( main
+  ) where
+
+import Control.Monad
+import Control.Monad.Logger
+import Data.Conduit
+import Data.MediaBus
+import Data.MediaBus.FdkAac
+
+main :: IO ()
+main = void encodeOneSeconfOfSilence
+
+encodeOneSeconfOfSilence
+  :: IO [Stream SrcId32
+                SeqNum16
+                (Ticks64 (Hz 48000))
+                (AacEncoderInfo (Hz 48000) Stereo 'HighEfficiency)
+                (Audio (Hz 48000) Stereo (Aac 'HighEfficiency))]
+encodeOneSeconfOfSilence =
+  runStdoutLoggingT $
+  runConduitRes $
+        yieldNextFrame (MkFrame 0 0 pcmAudioOneSecond)
+     .| encodeLinearToAacC encoderConfig
+     .| traceShowSink 1 "Example Trace"
+
+  where
+    pcmAudioOneSecond :: Audio (Hz 48000) Stereo (Raw S16)
+    pcmAudioOneSecond = blankFor 1
+    encoderConfig = aacEncoderConfig aacHe48KhzStereo
+```

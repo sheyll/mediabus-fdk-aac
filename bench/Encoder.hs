@@ -2,14 +2,16 @@ module Main
   ( main
   ) where
 
-import Control.Lens
+import Control.Monad
 import Control.Monad.Logger
-import Criterion.Main
 import Data.Conduit
-import Data.Conduit.List
 import Data.MediaBus
-import Data.MediaBus.FdkAac.Encoder
+import Data.MediaBus.FdkAac
+import Data.Conduit.List
+import Data.Time.Clock
 import Data.Typeable
+import Criterion.Main
+import Control.Lens
 import Data.Vector.Storable as V
 import Data.Word
 import GHC.TypeLits
@@ -17,34 +19,36 @@ import GHC.TypeLits
 main :: IO ()
 main =
   defaultMain
-    [ bgroupFromTestDuration 1000 16000
-    , bgroupFromTestDuration 1000 48000
-    ]
+    [bgroupFromTestDuration 1000 16000, bgroupFromTestDuration 1000 48000]
 
-bgroupFromTestDuration :: Int -> Int -> Benchmark
+bgroupFromTestDuration :: NominalDiffTime -> Int -> Benchmark
 bgroupFromTestDuration testdur samplesPerSecond =
   bgroup
-    (show testdur Prelude.++ "ms ptime=20ms " Prelude.++
-     show samplesPerSecond Prelude.++
+    (show testdur Prelude.++ " ptime=20ms " Prelude.++ show samplesPerSecond Prelude.++
      " Hz") $
-  let frameCount = testdur `div` ptime
-      frameSamples = ptime * (samplesPerSecond `div` 1000)
-      ptime = 20
+  let frameCount = ceiling (testdur / ptime)
+      ptime = 20 / 1000
   in [ bgroup
          "AAC HE"
-         [ bench "Stereo" $ nfIO $
+         [ bench "Stereo" $
+           nfIO $
            encodeNFrames (aacEncoderConfig aacHe16KhzStereo) $
-           testFrames frameSamples frameCount
-         , bench "Mono" $ nfIO $ encodeNFrames (aacEncoderConfig aacHe16KhzMono) $
-           testFrames frameSamples frameCount
+           testFrames testdur frameCount
+         , bench "Mono" $
+           nfIO $
+           encodeNFrames (aacEncoderConfig aacHe16KhzMono) $
+           testFrames testdur frameCount
          ]
      , bgroup
          "AAC LC"
-         [ bench "Stereo" $ nfIO $
+         [ bench "Stereo" $
+           nfIO $
            encodeNFrames (aacEncoderConfig aacLc16KhzStereo) $
-           testFrames frameSamples frameCount
-         , bench "Mono" $ nfIO $ encodeNFrames (aacEncoderConfig aacLc16KhzMono) $
-           testFrames frameSamples frameCount
+           testFrames testdur frameCount
+         , bench "Mono" $
+           nfIO $
+           encodeNFrames (aacEncoderConfig aacLc16KhzMono) $
+           testFrames testdur frameCount
          ]
      ]
 
@@ -63,21 +67,20 @@ encodeNFrames
   -> [Stream SrcId32 SeqNum16 (Ticks r Word64) () (Audio r channels (Raw S16))]
   -> IO [Stream SrcId32 SeqNum16 (Ticks r Word64) (AacEncoderInfo r channels aot) (Audio r channels (Aac aot))]
 encodeNFrames cfg pcms =
-  runStdoutLoggingT $ runConduitRes $ sourceList pcms .| encodeLinearToAacC cfg .|
-  consume
+  runStdoutLoggingT $
+  runConduitRes $ sourceList pcms .| encodeLinearToAacC cfg .| consume
 
 testFrames
-  :: IsPcmValue (Pcm channels S16)
-  => Int
+  :: (KnownRate r, IsPcmValue (Pcm channels S16))
+  => NominalDiffTime
   -> Int
   -> [Stream SrcId32 SeqNum16 (Ticks r Word64) () (Audio r channels (Raw S16))]
-testFrames samplesPerFrame frames =
+testFrames frameDuration frames =
   [ MkStream
     (Next
        (MkFrame
-          (fromIntegral $ x * samplesPerFrame)
+          (fromIntegral x * (nominalDiffTime # frameDuration))
           (fromIntegral x)
-          (pcmMediaBuffer . mediaBufferVector #
-           V.replicate samplesPerFrame blank)))
+          (blankFor frameDuration)))
   | x <- [0 .. frames]
   ]
