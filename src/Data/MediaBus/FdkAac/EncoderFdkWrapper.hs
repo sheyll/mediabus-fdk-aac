@@ -1,4 +1,5 @@
--- | An internal module that tightly wraps around t Frauenhofer Development Toolkit.
+-- | An internal module that tightly wraps around the Frauenhofer Development
+-- Toolkit for AAC audio.
 module Data.MediaBus.FdkAac.EncoderFdkWrapper
   ( AacEncErrorCode(..)
   , toAacEncErrorCode
@@ -15,6 +16,7 @@ module Data.MediaBus.FdkAac.EncoderFdkWrapper
   , destroy
   ) where
 
+import Control.Exception
 import Data.Coerce
 import Data.Int
 import Data.Monoid
@@ -38,18 +40,18 @@ C.include "fdk-aac/aacenc_lib.h"
 -- works out great, an 'Encoder' is returned. Use 'destroy' to release the
 -- resources associated with an 'Encoder'.
 create :: Config -> IO (Either CreateFailure Encoder)
-create MkConfig { configModules
-                , configChannels
-                , configAot
-                , configSampleRate
-                , configBitRate
-                , configBitRateMode
-                , configBandwidth
-                , configSbrMode
-                , configSignallingMode
-                , configChannelMode
-                , configAfterburner
-                } = do
+create config@(MkConfig { configModules
+                        , configChannels
+                        , configAot
+                        , configSampleRate
+                        , configBitRate
+                        , configBitRateMode
+                        , configBandwidth
+                        , configSbrMode
+                        , configSignallingMode
+                        , configChannelMode
+                        , configAfterburner
+                        }) = do
   let confBufMaxLen = 255 :: CUInt
   confBufC <- mallocForeignPtrBytes (fromIntegral confBufMaxLen)
   ((encDelayC, confBufSizeC, frameSizeC, aacEncoderCfgErrorC, errorCodeC), hPtr) <-
@@ -163,6 +165,7 @@ create MkConfig { configModules
               MkCreateFailure
               { createFailureErrorCode = toAacEncErrorCode errorCodeC
               , createFailureAt = toEnum (fromIntegral aacEncoderCfgErrorC)
+              , createFailureInputConfig = config
               })
     else do
       let ascVM = VM.unsafeFromForeignPtr0 confBufC (fromIntegral confBufSizeC)
@@ -236,11 +239,17 @@ simpleConfig !aot !channels !sampleRate =
      , configAfterburner
      }
 
+-- | Description of the context in which the 'create' function failed.
 data CreateFailure = MkCreateFailure
   { createFailureErrorCode :: AacEncErrorCode
   , createFailureAt :: CreateFailedAt
+  , createFailureInputConfig :: Config
   } deriving (Show, Eq)
 
+instance Exception CreateFailure
+
+-- | This sum type narrows down the specific step that failed,
+-- in the @inline-c@ wrapper code in the 'create' function.
 data CreateFailedAt
   = AacEncOpen
   | AacEncSetAot
@@ -268,9 +277,15 @@ data Encoder = MkEncoder
   , audioSpecificConfig :: !(V.Vector Word8)
   }
 
+-- | This instance only shows the 'encoderHandle' as hex string.
+instance Show Encoder where
+  showsPrec d MkEncoder {encoderHandle} =
+    showParen (d > 10) $
+    showString (printf "fdk-aac-enc: %016X" (toInteger encoderHandle))
+
 -- | Encode Samples.
 encode :: Encoder -> V.Vector Word16 -> IO (Either EncodeFailure EncodeResult)
-encode enc@MkEncoder {encoderHandle, unsafeOutBuffer, channelCount} !vecW16 = do
+encode enc@MkEncoder {encoderHandle, unsafeOutBuffer} !vecW16 = do
   let vec = coerce vecW16
   toEncodeResult vec enc =<<
     (C.withPtrs $ \(numOutBytesP, numInSamplesP, numAncBytesP) ->
@@ -320,7 +335,7 @@ flush :: Encoder -> IO (Either EncodeFailure EncodeResult)
 flush enc@(MkEncoder {encoderHandle, unsafeOutBuffer}) = do
   toEncodeResult mempty enc =<<
     (C.withPtrs $ \(numOutBytesP, numInSamplesP, numAncBytesP) ->
-      [C.block| int {
+       [C.block| int {
             AACENC_ERROR e;
             HANDLE_AACENCODER phAacEncoder = (HANDLE_AACENCODER) $(uintptr_t encoderHandle);
 
@@ -357,10 +372,12 @@ flush enc@(MkEncoder {encoderHandle, unsafeOutBuffer}) = do
 toEncodeResult
   :: V.Vector C.CShort
   -> Encoder
-  -> ((C.CInt , C.CInt, C.CInt), CInt)
+  -> ((C.CInt, C.CInt, C.CInt), CInt)
   -> IO (Either EncodeFailure EncodeResult)
 toEncodeResult vec MkEncoder {unsafeOutBuffer, channelCount} ((numOutBytes, numInSamples, numAncBytes), retCode) =
-  if retCode /= 0
+  let retCode' = toAacEncErrorCode retCode
+  in
+    if retCode' /= AacEncOk && retCode' /= AacEncEncodeEof 
     then return $
          Left
            MkEncodeFailure
@@ -417,12 +434,28 @@ data EncodeResult = MkEncodeResult
                                                     -- 'frameLength'.
   }
 
+instance Show EncodeResult where
+  showsPrec d MkEncodeResult { encodeResultConsumedFrames
+                             , encodeResultLeftOverInput
+                             , encodeResultSamples
+                             } =
+    showParen (d > 10) $
+    showString "encode result: consumed input samples: " .
+    shows encodeResultConsumedFrames .
+    showString ", left over input values: " .
+    (maybe (showString "n/a") (shows . V.length) encodeResultLeftOverInput) .
+    showString ", encoded output bytes: " .
+    (maybe (showString "n/a") (shows . V.length) encodeResultSamples)
+
+-- | Information about encoder when an 'encode' failure occured.
 data EncodeFailure = MkEncodeFailure
   { encodeFailureCode :: !AacEncErrorCode
   , encodeFailureNumOutBytes :: !Word64
   , encodeFailureNumInSamples :: !Int16
   , encodeFailureNumAncBytes :: !Word64
   } deriving (Eq)
+
+instance Exception EncodeFailure
 
 instance Show EncodeFailure where
   show MkEncodeFailure {..} =
@@ -442,6 +475,7 @@ destroy MkEncoder {encoderHandle} = do
              return aacEncClose(&phAacEncoder);
           } |]
 
+-- | Error codes from the C-library, translated to this sum type
 data AacEncErrorCode
   = AacEncOk
   | AacEncInvalidHandle
@@ -458,6 +492,7 @@ data AacEncErrorCode
   | AacEncErrorOther CInt
   deriving (Eq, Show)
 
+-- | Create an 'AacEncErrorCode' from the @int@ returned by the C-code.
 toAacEncErrorCode :: CInt -> AacEncErrorCode
 toAacEncErrorCode e =
   case e of

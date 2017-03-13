@@ -12,3 +12,4 @@ TAGS
 *.refactored.hs
 src/**/*.c
 /dist/
+/*.html
