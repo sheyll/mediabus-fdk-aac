@@ -29,18 +29,21 @@ In this specific case `encodeLinearToAacC` has the type:
 
 
 ```haskell
-  Conduit
+
+encodeLinearToAacC ::  
+     AacEncoderConfig (Hz 48000) Stereo 'HighEfficiency   -- The encoder cofiguration
+  -> Conduit                                              -- The resulting Conduit
           (Stream SrcId32                                      -- Input: The Stream id is a 'SrcId32'
-                  SeqNum16                                     -- 16 bit frame sequence numbers
-                  (Ticks64 (Hz 48000))                         -- 64 bit frame timestamps at 48kHz sample rate
-                  ()                                           -- There is not stream-info
-                  (Audio (Hz 48000) Stereo (Raw S16)))         -- The media is linear signed 16bit stereo
+                  SeqNum16                                     --   16 bit frame sequence numbers
+                  (Ticks64 (Hz 48000))                         --   64 bit frame timestamps at 48kHz sample rate
+                  ()                                           --   no stream-info for raw audio
+                  (Audio (Hz 48000) Stereo (Raw S16)))         --   linear signed 16bit stereo audio data
 
           (ResourceT (LoggingT IO))                            -- Monad: Logging and Resource management over IO
 
           (Stream SrcId32                                             -- Output:
                   SeqNum16
                   (Ticks64 (Hz 48000))               
-                  (AacEncoderInfo (Hz 48000) Stereo 'HighEfficiency)  -- Stream info record
-                  (Audio (Hz 48000) Stereo (Aac 'HighEfficiency)))    -- AAC-HE audio output
+                  (AacEncoderInfo (Hz 48000) Stereo 'HighEfficiency)  -- AAC Stream Info: Framelength and Audio Specific Config
+                  (Audio (Hz 48000) Stereo (Aac 'HighEfficiency)))    -- AAC-HE audio data
 ```
