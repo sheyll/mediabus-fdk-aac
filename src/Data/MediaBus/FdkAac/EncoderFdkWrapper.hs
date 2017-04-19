@@ -376,53 +376,56 @@ toEncodeResult
   -> IO (Either EncodeFailure EncodeResult)
 toEncodeResult vec MkEncoder {unsafeOutBuffer, channelCount} ((numOutBytes, numInSamples, numAncBytes), retCode) =
   let retCode' = toAacEncErrorCode retCode
-  in
-    if retCode' /= AacEncOk && retCode' /= AacEncEncodeEof 
-    then return $
-         Left
-           MkEncodeFailure
-           { encodeFailureCode = toAacEncErrorCode retCode
-           , encodeFailureNumOutBytes = fromIntegral numOutBytes
-           , encodeFailureNumInSamples = fromIntegral numInSamples
-           , encodeFailureNumAncBytes = fromIntegral numAncBytes
-           }
-    else do
-      let !numInSamplesI = fromIntegral numInSamples
-          !consumedFrames =
-            fromIntegral numInSamplesI `div` fromIntegral channelCount
-          !leftOverInput =
-            if numInSamplesI >= V.length vec
-              then Nothing
-              else let !inSliceLen = V.length vec - numInSamplesI
-                       !inSlice = V.slice numInSamplesI inSliceLen vec
-                   in Just inSlice
-          !numOutBytesI = fromIntegral numOutBytes
-      !encodedOutput <-
-        if numOutBytesI == 0
-          then return Nothing
-          else do
-            !outTooLarge <- V.freeze unsafeOutBuffer
-            return $ Just $ V.force $ V.slice 0 numOutBytesI outTooLarge
-      return $
-        Right
-          MkEncodeResult
-          { encodeResultConsumedFrames = consumedFrames
-          , encodeResultLeftOverInput = coerce leftOverInput
-          , encodeResultSamples = coerce encodedOutput
-          }
+  in if retCode' == AacEncEncodeEof
+       then return (Right MkEncodeResultEof)
+       else if retCode' /= AacEncOk
+              then return $
+                   Left
+                     MkEncodeFailure
+                     { encodeFailureCode = toAacEncErrorCode retCode
+                     , encodeFailureNumOutBytes = fromIntegral numOutBytes
+                     , encodeFailureNumInSamples = fromIntegral numInSamples
+                     , encodeFailureNumAncBytes = fromIntegral numAncBytes
+                     }
+              else do
+                let !numInSamplesI = fromIntegral numInSamples
+                    !consumedFrames =
+                      fromIntegral numInSamplesI `div` fromIntegral channelCount
+                    !leftOverInput =
+                      if numInSamplesI >= V.length vec
+                        then Nothing
+                        else let !inSliceLen = V.length vec - numInSamplesI
+                                 !inSlice = V.slice numInSamplesI inSliceLen vec
+                             in Just inSlice
+                    !numOutBytesI = fromIntegral numOutBytes
+                !encodedOutput <-
+                  if numOutBytesI == 0
+                    then return Nothing
+                    else do
+                      !outTooLarge <- V.freeze unsafeOutBuffer
+                      return $
+                        Just $ V.force $ V.slice 0 numOutBytesI outTooLarge
+                return $
+                  Right
+                    MkEncodeResult
+                    { encodeResultConsumedFrames = consumedFrames
+                    , encodeResultLeftOverInput = coerce leftOverInput
+                    , encodeResultSamples = coerce encodedOutput
+                    }
 
 -- | Result of 'encode'
-data EncodeResult = MkEncodeResult
-  { encodeResultConsumedFrames :: !Word64 -- ^ Number of samples from the input
+data EncodeResult
+  = MkEncodeResultEof
+  | MkEncodeResult { encodeResultConsumedFrames :: !Word64 -- ^ Number of samples from the input
                                          -- that were processed by the encoder
-  , encodeResultLeftOverInput :: !(Maybe (V.Vector Word16)) -- ^ The unprocessed
+                  ,  encodeResultLeftOverInput :: !(Maybe (V.Vector Word16)) -- ^ The unprocessed
                                                            -- rest of the input.
                                                            -- Only if the input
                                                            -- is larger than the
                                                            -- encoders frame
                                                            -- length a left over
                                                            -- is returned.
-  , encodeResultSamples :: !(Maybe (V.Vector Word8)) -- ^ Encoded output. If less
+                  ,  encodeResultSamples :: !(Maybe (V.Vector Word8)) -- ^ Encoded output. If less
                                                     -- than the frame length
                                                     -- samples have been
                                                     -- encoded, then the result
@@ -432,9 +435,10 @@ data EncodeResult = MkEncodeResult
                                                     -- representing the encded
                                                     -- samples delayed by
                                                     -- 'frameLength'.
-  }
+                   }
 
 instance Show EncodeResult where
+  showsPrec _ MkEncodeResultEof = showString "encoder-EOF"
   showsPrec d MkEncodeResult { encodeResultConsumedFrames
                              , encodeResultLeftOverInput
                              , encodeResultSamples

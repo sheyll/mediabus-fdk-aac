@@ -1,5 +1,5 @@
 name:                mediabus-fdk-aac
-version:             0.3.2.1
+version:             0.4.0.0
 synopsis:            Mediabus plugin for the Frauenhofer ISO-14496-3 AAC FDK
 description:         Please see README.md
 homepage:            https://github.com/lindenbaum/mediabus-fdk-aac
@@ -112,7 +112,7 @@ benchmark encoder-benchmark
                      , TypeOperators
                      , TypeSynonymInstances
                      , UnicodeSyntax
-  build-depends:    base, deepseq, ghc-prim, lens, monad-logger,
+  build-depends:    base, deepseq, ghc-prim, lens, monad-logger, time,
                     criterion, mediabus-fdk-aac, mediabus, conduit, vector <13
   ghc-options:      -O2 -Wall -funbox-strict-fields -fno-warn-unused-do-bind
 

@@ -6,25 +6,26 @@ module Data.MediaBus.FdkAac.Conduit.Encoder
   ) where
 
 import Conduit
-import Control.Lens
-import Control.Monad
 import Control.Monad.Logger
-import Control.Monad.Trans.State.Strict as State
 import Data.MediaBus
 import Data.MediaBus.FdkAac.Encoder
-import Data.String
 import Data.Tagged
 import Data.Typeable
 import GHC.TypeLits
 
-
 --  * Conduit Based 'Stream' Encoding
 -- | A conduit that receives signed 16 bit, mono or stereo, 'Raw' 'Audio' and
--- yields AAC encoded frames. The timestamps of the input frames will be
--- regarded such that gaps in the timestamps are reflected in the generated
--- frames. The sequence numbering will be
+-- yields AAC encoded frames.
+-- When a 'Start' event is received, the delay lines will be flushed.
+-- The timestamps and sequence numbers of the input will be ignored.
+-- The output sequence numbers start from zero and increase
+-- monotonic. 'Start' events don't lead to resetting neither sequence numbers
+-- nor timestamps.
+-- The timestamps start at the encoder delay and are increased by 'frameSize'
+-- and the type signature requires that the timestamp unit for 'Frame's has the
+-- same sampling rate as the encoded audio.
 encodeLinearToAacC
-  :: forall channels r aot i s t m.
+  :: forall channels r aot i m.
      ( MonadLoggerIO m
      , MonadThrow m
      , MonadResource m
@@ -34,81 +35,24 @@ encodeLinearToAacC
      , Show (AacAotProxy aot)
      , KnownNat (GetAacAot aot)
      , Show i
-     , Show t
-     , Typeable t
-     , LocalOrd t
-     , Show s
-     , Typeable s
-     , Num t
-     , Num s
      , CanBeSample (Pcm channels S16)
      , Show (Pcm channels S16)
-     , Integral t
      )
   => AacEncoderConfig r channels aot
-  -> Conduit (Stream i s (Ticks r t) () (Audio r channels (Raw S16))) m (Stream i s (Ticks r t) (AacEncoderInfo r channels aot) (Audio r channels (Aac aot)))
+  -> Conduit (SyncStream i () (Audio r channels (Raw S16))) m (SyncStream i (AacEncoderInfo r channels aot) (Audio r channels (Aac aot)))
 encodeLinearToAacC aacCfg = do
   (Tagged enc, info) <- lift $ aacEncoderAllocate aacCfg
-  (_res, _st, ()) <-
-    prefixLogsC (show enc ++ " - ") $
-    runRWSC
-      enc
-      (MkAacEncSt @r @channels @aot 0)
-      (evalStateC
-         (initialReframerState :: ReframerSt s (Ticks r t))
-         (encodeThenFlush info))
-  return ()
+  prefixLogsC (show enc ++ " - ") $ runReaderC enc (encodeThenFlush info)
   where
     encodeThenFlush info = do
       awaitForever go
-      aacs <- lift $ lift flushAacEncoder
-      Prelude.mapM_ yieldAacFrame aacs
+      aacs <- lift flushAacEncoder
+      Prelude.mapM_ yieldNextFrame aacs
       where
         go (MkStream (Next f)) = do
-          let reframeFrame = f & framePayload %~ getDurationTicks
-          $logDebug (fromString ("in: " ++ show f))
-          pushRes <- lift $ pushFrame reframeFrame
-          case pushRes of
-            Nothing -> return ()
-            Just er -> do
-              $logInfo
-                (fromString
-                   ("frame timing problem: " ++ show er ++ ", frame: " ++
-                    show reframeFrame))
-              lift $ State.get >>= $logInfoSH
-              aacs <- lift $ lift flushAacEncoder
-              Prelude.mapM_ yieldAacFrame aacs
-              lift $
-                pushStartFrame
-                  (reframeFrame ^. frameTimestamp + reframeFrame ^. framePayload)
-          aacs <-
-            lift $ lift $
-            encodeLinearToAac (view framePayload f)
-          Prelude.mapM_ yieldAacFrame aacs
-        go start@(MkStream (Start (MkFrameCtx fi ft fs _fp))) = do
-          lift $ pushStartFrame ft
-          lift $ $logDebug (fromString ("in: " ++ show start))
-          let outStart = MkFrameCtx fi ft fs info
-          lift $ $logDebug (fromString ("out: " ++ show outStart))
+          aacs <- lift (encodeLinearToAac f)
+          Prelude.mapM_ yieldNextFrame aacs
+        go (MkStream (Start (MkFrameCtx fi _ _ _))) = do
+          lift flushAacEncoder >>= Prelude.mapM_ yieldNextFrame
+          let outStart = MkFrameCtx fi () () info
           yieldStartFrameCtx outStart
-        yieldAacFrame fc =
-          let wantDur = getDurationTicks fc
-          in when (wantDur > 0) $ do
-               frm <- lift $ generateFrame wantDur
-               when (frm ^. framePayload < wantDur) $ do
-                 $logInfo
-                   (fromString
-                      ("encoder generated more output than input, input: " ++
-                       show (frm ^. framePayload) ++
-                       " < output: " ++
-                       show wantDur))
-                 availDur <- lift nextFrameAvailableDuration
-                 $logInfo
-                   (fromString
-                      ("samples enqueuend in the encoder delay lines: " ++
-                       show availDur))
-                 rfst <- lift $ State.get
-                 $logInfoSH rfst
-               let outFrm = frm & framePayload .~ fc
-               $logDebug (fromString ("out: " ++ show outFrm))
-               yieldNextFrame outFrm

@@ -42,7 +42,7 @@ encodeLinearToAacC ::
           (ResourceT (LoggingT IO))                            -- Monad: Logging and Resource management over IO
 
           (Stream SrcId32                                             -- Output:
-                  SeqNum16
+                  SeqNum64
                   (Ticks64 (Hz 48000))               
                   (AacEncoderInfo (Hz 48000) Stereo 'HighEfficiency)  -- AAC Stream Info: Framelength and Audio Specific Config
                   (Audio (Hz 48000) Stereo (Aac 'HighEfficiency)))    -- AAC-HE audio data

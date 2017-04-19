@@ -13,15 +13,16 @@ main = void encodeOneSeconfOfSilence
 
 encodeOneSeconfOfSilence
   :: IO [Stream SrcId32
-                SeqNum16
+                SeqNum64
                 (Ticks64 (Hz 48000))
                 (AacEncoderInfo (Hz 48000) Stereo 'HighEfficiency)
                 (Audio (Hz 48000) Stereo (Aac 'HighEfficiency))]
 encodeOneSeconfOfSilence =
   runStdoutLoggingT $
   runConduitRes $
-        yieldNextFrame (MkFrame 0 0 pcmAudioOneSecond)
+        yieldNextFrame (MkFrame () () pcmAudioOneSecond)
      .| encodeLinearToAacC encoderConfig
+     .| setSequenceNumberAndTimestampC
      .| traceShowSink 1 "Example Trace"
 
   where
