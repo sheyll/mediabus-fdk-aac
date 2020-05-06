@@ -42,7 +42,7 @@ encodeLinearToAacC
   -> Conduit (SyncStream i () (Audio r channels (Raw S16))) m (SyncStream i (AacEncoderInfo r channels aot) (Audio r channels (Aac aot)))
 encodeLinearToAacC aacCfg = do
   (Tagged enc, info) <- lift $ aacEncoderAllocate aacCfg
-  prefixLogsC (show enc ++ " - ") $ runReaderC enc (encodeThenFlush info)
+  runReaderC enc (encodeThenFlush info)
   where
     encodeThenFlush info = do
       awaitForever go
