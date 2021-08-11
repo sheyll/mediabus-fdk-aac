@@ -21,7 +21,7 @@
 /*.html
 /*.prof
 /cabal.config
-/dist-new/
+/dist-*
 /dist/
 /result*
 /TAGS

@@ -1,31 +1,41 @@
 module Main
-  ( main
-  ) where
+  ( main,
+  )
+where
 
+import Conduit
 import Control.Monad
 import Control.Monad.Logger
 import Data.Conduit
+import Data.Conduit.List (consume)
 import Data.MediaBus
 import Data.MediaBus.FdkAac
 
 main :: IO ()
 main = void encodeOneSeconfOfSilence
 
-encodeOneSeconfOfSilence
-  :: IO [Stream SrcId32
-                SeqNum64
-                (Ticks64 (Hz 48000))
-                (AacEncoderInfo (Hz 48000) Stereo 'HighEfficiency)
-                (Audio (Hz 48000) Stereo (Aac 'HighEfficiency))]
+encodeOneSeconfOfSilence ::
+  IO
+    [ Stream
+        SrcId32
+        SeqNum64
+        (Ticks64 (Hz 48000))
+        (AacEncoderInfo (Hz 48000) Mono 'HighEfficiency)
+        (Audio (Hz 48000) Mono (Aac 'HighEfficiency))
+    ]
 encodeOneSeconfOfSilence =
   runStdoutLoggingT $
-  runConduitRes $
+    runResourceT $
+      runConduit $
         yieldNextFrame (MkFrame () () pcmAudioOneSecond)
-     .| encodeLinearToAacC encoderConfig
-     .| setSequenceNumberAndTimestampC
-     .| traceShowSink 1 "Example Trace"
-
+          .| traceShowC 1 "raw"
+          .| encodeLinearToAacC encoderConfig
+          .| traceShowC 1 "encoded"
+          .| setSequenceNumberAndTimestampC
+          .| traceShowSink 1 "timestamped and sequenced"
   where
-    pcmAudioOneSecond :: Audio (Hz 48000) Stereo (Raw S16)
+
+    pcmAudioOneSecond :: Audio (Hz 48000) Mono (Raw S16)
     pcmAudioOneSecond = blankFor 1
-    encoderConfig = aacEncoderConfig aacHe48KhzStereo
+
+    encoderConfig = aacEncoderConfig aacHe48KhzMono

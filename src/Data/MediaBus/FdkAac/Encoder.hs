@@ -1,37 +1,39 @@
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 -- | This module defines a type-safe, high-level interface to encode linear
 --   audio into AAC. This interface is still relatively low-level.
 --   For an easy to use, high-level interface please consult
 --   'Data.MediaBus.FdkAac.Conduit.Encoder'.
 module Data.MediaBus.FdkAac.Encoder
-  ( aacFrameDuration
-  , aacFrameMediaData
-  , Aac
-  , aacHe48KhzStereo
-  , aacHe16KhzStereo
-  , aacHe48KhzMono
-  , aacHe16KhzMono
-  , aacLc48KhzStereo
-  , aacLc16KhzStereo
-  , aacLc48KhzMono
-  , aacLc16KhzMono
-  , aacEncoderConfig
-  , AacEncoderInfo(..)
-  , aacEncoderInfoId
-  , aacEncoderInfoDelay
-  , aacEncoderInfoFrameSize
-  , aacEncoderInfoAudioSpecificConfig
-  , type AacEncoderConfig
-  , type AacEncoderContext
-  , AacAot(..)
-  , AacAotProxy(..)
-  , type GetAacAot
-  , aacEncoderAllocate
-  , type AacEncT
-  , encodeLinearToAac
-  , flushAacEncoder
-  ) where
+  ( aacFrameDuration,
+    aacFrameMediaData,
+    Aac,
+    aacHe48KhzStereo,
+    aacHe16KhzStereo,
+    aacHe48KhzMono,
+    aacHe16KhzMono,
+    aacLc48KhzStereo,
+    aacLc16KhzStereo,
+    aacLc48KhzMono,
+    aacLc16KhzMono,
+    aacEncoderConfig,
+    AacEncoderInfo (..),
+    aacEncoderInfoId,
+    aacEncoderInfoDelay,
+    aacEncoderInfoFrameSize,
+    aacEncoderInfoAudioSpecificConfig,
+    type AacEncoderConfig,
+    type AacEncoderContext,
+    AacAot (..),
+    AacAotProxy (..),
+    type GetAacAot,
+    aacEncoderAllocate,
+    type AacEncT,
+    encodeLinearToAac,
+    flushAacEncoder,
+  )
+where
 
 import Conduit
 import Control.DeepSeq
@@ -52,19 +54,25 @@ import GHC.TypeLits
 import Text.Printf
 
 -- * MediaBus Aac Encoder
+
 -- | This is the media type for AAC encoded audio data.
 data Aac (aot :: AacAot)
 
-data instance  Audio r c (Aac aot) = MkAacBuffer{aacFrameMediaData
-                                                 :: !(V.Vector Word8),
-                                                 aacFrameDuration :: !(Ticks64 r)}
-                                   deriving (Generic)
+data instance Audio r c (Aac aot) = MkAacBuffer
+  { aacFrameMediaData ::
+      !(V.Vector Word8),
+    aacFrameDuration :: !(Ticks64 r)
+  }
+  deriving (Generic)
 
-instance (KnownRate r, KnownChannelLayout c, Show (AacAotProxy aot)) =>
-         IsMedia (Audio r c (Aac aot))
+instance
+  (KnownRate r, KnownChannelLayout c, Show (AacAotProxy aot)) =>
+  IsMedia (Audio r c (Aac aot))
 
-instance (KnownRate r, KnownChannelLayout c, Show (AacAotProxy aot)) =>
-         HasMedia (Audio r c (Aac aot)) (Audio r c (Aac aot)) where
+instance
+  (KnownRate r, KnownChannelLayout c, Show (AacAotProxy aot)) =>
+  HasMedia (Audio r c (Aac aot)) (Audio r c (Aac aot))
+  where
   type MediaFrom (Audio r c (Aac aot)) = Audio r c (Aac aot)
   type MediaTo (Audio r c (Aac aot)) = Audio r c (Aac aot)
   media = iso id id
@@ -75,10 +83,12 @@ instance HasMediaBuffer (Audio r c (Aac aot)) (Audio r c (Aac aot)) where
   mediaBuffer =
     lens
       (MkMediaBuffer . aacFrameMediaData)
-      (\aacFrame -> \(MkMediaBuffer v) -> aacFrame {aacFrameMediaData = v})
+      (\aacFrame (MkMediaBuffer v) -> aacFrame {aacFrameMediaData = v})
 
-instance (KnownRate r) =>
-         HasDuration (Audio r c (Aac aot)) where
+instance
+  (KnownRate r) =>
+  HasDuration (Audio r c (Aac aot))
+  where
   getDuration MkAacBuffer {aacFrameDuration} =
     from nominalDiffTime # aacFrameDuration
   getDurationTicks MkAacBuffer {aacFrameDuration} =
@@ -86,37 +96,45 @@ instance (KnownRate r) =>
 
 instance NFData (Audio r c (Aac aot))
 
-instance (KnownRate r, KnownChannelLayout c, Show (AacAotProxy aot)) =>
-         Show (Audio r c (Aac aot)) where
+instance
+  (KnownRate r, KnownChannelLayout c, Show (AacAotProxy aot)) =>
+  Show (Audio r c (Aac aot))
+  where
   showsPrec d MkAacBuffer {aacFrameMediaData, aacFrameDuration} =
     showParen
       (d > 10)
-      (showString "aac frame: " .
-       showsPrec 11 (MkShowMedia :: MediaDescription (Audio r c (Aac aot))) .
-       showString ", samples: " .
-       shows aacFrameDuration .
-       showString ", data: " .
-       showsPrec 11 (V.length aacFrameMediaData) .
-       showString " bytes starting with: " .
-       showsPrec 11 (V.take 16 aacFrameMediaData))
+      ( showString "aac frame: "
+          . showsPrec 11 (MkShowMedia :: MediaDescription (Audio r c (Aac aot)))
+          . showString ", samples: "
+          . shows aacFrameDuration
+          . showString ", data: "
+          . showsPrec 11 (V.length aacFrameMediaData)
+          . showString " bytes starting with: "
+          . showsPrec 11 (V.take 16 aacFrameMediaData)
+      )
 
-instance (KnownRate r, KnownChannelLayout c, Show (AacAotProxy aot)) =>
-         Show (MediaDescription (Audio r c (Aac aot))) where
+instance
+  (KnownRate r, KnownChannelLayout c, Show (AacAotProxy aot)) =>
+  Show (MediaDescription (Audio r c (Aac aot)))
+  where
   showsPrec d _ =
     showParen
       (d > 10)
-      (showsPrec 11 (MkAacAotProxy :: AacAotProxy aot) . showChar ' ' .
-       showsPrec 11 (MkRateProxy :: RateProxy r) .
-       showChar ' ' .
-       showsPrec 11 (MkChannelLayoutProxy :: ChannelLayoutProxy c))
+      ( showsPrec 11 (MkAacAotProxy :: AacAotProxy aot) . showChar ' '
+          . showsPrec 11 (MkRateProxy :: RateProxy r)
+          . showChar ' '
+          . showsPrec 11 (MkChannelLayoutProxy :: ChannelLayoutProxy c)
+      )
 
 -- ** Aac Configuration
+
 -- | Create the 'Config' value needed to intialize the encoder from type-level
 -- audio stream settings.
-aacEncoderConfig
-  :: forall rate channels aot proxy.
-     (KnownRate rate, KnownChannelLayout channels, KnownNat (GetAacAot aot))
-  => proxy (Audio rate channels (Aac aot)) -> AacEncoderConfig rate channels aot
+aacEncoderConfig ::
+  forall rate channels aot proxy.
+  (KnownRate rate, KnownChannelLayout channels, KnownNat (GetAacAot aot)) =>
+  proxy (Audio rate channels (Aac aot)) ->
+  AacEncoderConfig rate channels aot
 aacEncoderConfig _pa =
   let pr :: Proxy rate
       pr = Proxy
@@ -124,13 +142,14 @@ aacEncoderConfig _pa =
       pch = Proxy
       pco :: AacAotProxy aot
       pco = MkAacAotProxy
-  in Tagged $
-     simpleConfig
-       (getAacAot pco)
-       (numberOfChannels pch)
-       (fromInteger (rateVal pr))
+   in Tagged $
+        simpleConfig
+          (getAacAot pco)
+          (numberOfChannels pch)
+          (fromInteger (rateVal pr))
 
 -- *** Pre-defined Aac media Proxies
+
 -- | 48 kHz Stereo 'HighEfficiency'
 aacHe48KhzStereo :: Proxy (Audio (Hz 48000) Stereo (Aac 'HighEfficiency))
 aacHe48KhzStereo = Proxy
@@ -166,56 +185,67 @@ aacLc16KhzMono = Proxy
 -- | The encoding specific information, created __by the encoder__ during
 -- initialization.
 data AacEncoderInfo (rate :: Rate) (channels :: Type) (aot :: AacAot) = MkAacEncoderInfo
-  { _aacEncoderInfoDelay :: !Word64
-  -- ^ Number of samples that the output will be delayed through the encoding
-  -- mechanism (e.g. aot delay lines)
-  , _aacEncoderInfoFrameSize :: !Word64
-  -- ^ Number of samples that are encoded into each frame.
-  , _aacEncoderInfoAudioSpecificConfig :: !(V.Vector Word8)
-  -- ^ The audio specific configuration /box/ as specified in ISO/IEC 14496-3
-  -- section 1.6, that the encoder generates.
-  , _aacEncoderInfoId :: String
-  -- ^ Identification string for one specific encoder, derived from the natice
-  -- C pointer in 'encoderHandle'.
-  } deriving (Generic)
+  { -- | Number of samples that the output will be delayed through the encoding
+    -- mechanism (e.g. aot delay lines)
+    _aacEncoderInfoDelay :: !Word64,
+    -- | Number of samples that are encoded into each frame.
+    _aacEncoderInfoFrameSize :: !Word64,
+    -- | The audio specific configuration /box/ as specified in ISO/IEC 14496-3
+    -- section 1.6, that the encoder generates.
+    _aacEncoderInfoAudioSpecificConfig :: !(V.Vector Word8),
+    -- | Identification string for one specific encoder, derived from the natice
+    -- C pointer in 'encoderHandle'.
+    _aacEncoderInfoId :: String
+  }
+  deriving (Generic)
 
 instance NFData (AacEncoderInfo r c a)
 
-instance ( KnownRate r
-         , KnownChannelLayout c
-         , Show (AacAotProxy aot)
-         , KnownNat (GetAacAot aot)
-         ) =>
-         Show (AacEncoderInfo r c aot) where
-  showsPrec d MkAacEncoderInfo { _aacEncoderInfoDelay
-                               , _aacEncoderInfoFrameSize
-                               , _aacEncoderInfoAudioSpecificConfig
-                               , _aacEncoderInfoId
-                               } =
-    showParen
-      (d > 10)
-      (showString _aacEncoderInfoId . showString " " .
-       showsPrec 11 (MkShowMedia :: MediaDescription (Audio r c (Aac aot))) .
-       showParen
-         True
-         (showString "encoding delay: " . showsPrec 11 _aacEncoderInfoDelay .
-          showString ", samples per frame: " .
-          showsPrec 11 _aacEncoderInfoFrameSize .
-          showString ", audio specific config: " .
-          showsPrec 11 _aacEncoderInfoAudioSpecificConfig))
+instance
+  ( KnownRate r,
+    KnownChannelLayout c,
+    Show (AacAotProxy aot),
+    KnownNat (GetAacAot aot)
+  ) =>
+  Show (AacEncoderInfo r c aot)
+  where
+  showsPrec
+    d
+    MkAacEncoderInfo
+      { _aacEncoderInfoDelay,
+        _aacEncoderInfoFrameSize,
+        _aacEncoderInfoAudioSpecificConfig,
+        _aacEncoderInfoId
+      } =
+      showParen
+        (d > 10)
+        ( showString _aacEncoderInfoId . showString " "
+            . showsPrec 11 (MkShowMedia :: MediaDescription (Audio r c (Aac aot)))
+            . showParen
+              True
+              ( showString "encoding delay: " . showsPrec 11 _aacEncoderInfoDelay
+                  . showString ", samples per frame: "
+                  . showsPrec 11 _aacEncoderInfoFrameSize
+                  . showString ", audio specific config: "
+                  . showsPrec 11 _aacEncoderInfoAudioSpecificConfig
+              )
+        )
 
 -- | Tag a 'Config' with the compile time configuration parameters.
-type AacEncoderConfig rate channels aot = Tagged '( rate, channels, aot) Config
+type AacEncoderConfig rate channels aot = Tagged '(rate, channels, aot) Config
 
 -- | Tag an 'Encoder' with the compile time configuration parameters.
-type AacEncoderContext rate channels aot = Tagged '( rate, channels, aot) Encoder
+type AacEncoderContext rate channels aot = Tagged '(rate, channels, aot) Encoder
 
 -- ** Audio Object Types
+
 -- | Type level symbol to indicate that the AAC audio coding is used for the
 -- respective media. This is a phantom type to index the 'Audio' data family.
 data AacAot
-  = LowComplexity -- ^ corresponds to audio object type @2@
-  | HighEfficiency -- ^ corresponds to audio object type @5@
+  = -- | corresponds to audio object type @2@
+    LowComplexity
+  | -- | corresponds to audio object type @5@
+    HighEfficiency
   deriving (Show)
 
 instance Show (AacAotProxy 'LowComplexity) where
@@ -230,49 +260,55 @@ type family GetAacAot (c :: AacAot) :: Nat where
   GetAacAot 'HighEfficiency = 5
 
 -- | Convert the 'AacAot' to an ISO/IEC 14496-3 Audio Object Type value.
-getAacAot
-  :: forall aot c proxy.
-     (Integral aot, KnownNat (GetAacAot c))
-  => proxy c -> aot
+getAacAot ::
+  forall aot c proxy.
+  (Integral aot, KnownNat (GetAacAot c)) =>
+  proxy c ->
+  aot
 getAacAot _ =
   let px :: Proxy (GetAacAot c)
       px = Proxy
-  in fromInteger $ natVal px
+   in fromInteger $ natVal px
 
 -- | Proxy for showing an 'AacAot'
-data AacAotProxy (aot :: AacAot) =
-  MkAacAotProxy
+data AacAotProxy (aot :: AacAot)
+  = MkAacAotProxy
 
 -- * Encoder Initialization
+
 -- | Allocate a new encoder instance in a 'ResourceT' monad such that it will
 -- automatically be released and the freed.
-aacEncoderAllocate
-  :: ( KnownRate rate
-     , KnownChannelLayout channels
-     , Show (AacAotProxy aot)
-     , KnownNat (GetAacAot aot)
-     , MonadIO m
-     , MonadResource m
-     , MonadThrow m
-     , MonadLoggerIO m
-     )
-  => AacEncoderConfig rate channels aot
-  -> m (AacEncoderContext rate channels aot, AacEncoderInfo rate channels aot)
+aacEncoderAllocate ::
+  ( KnownRate rate,
+    KnownChannelLayout channels,
+    Show (AacAotProxy aot),
+    KnownNat (GetAacAot aot),
+    MonadIO m,
+    MonadResource m,
+    MonadThrow m,
+    MonadLoggerIO m
+  ) =>
+  AacEncoderConfig rate channels aot ->
+  m (AacEncoderContext rate channels aot, AacEncoderInfo rate channels aot)
 aacEncoderAllocate (Tagged cfg) = do
   let destroyAndLog logger enc =
         runLoggingT
-          (do $logDebug (fromString (printf "%s destroying" (show enc)))
+          ( do
+              $logDebug (fromString (printf "%s destroying" (show enc)))
               res <- liftIO (destroy enc)
               case res of
                 AacEncOk ->
                   $logInfo (fromString (printf "%s destroyed" (show enc)))
                 other ->
                   $logError
-                    (fromString
-                       (printf
-                          "%s failed to destroy: %s"
-                          (show enc)
-                          (show other))))
+                    ( fromString
+                        ( printf
+                            "%s failed to destroy: %s"
+                            (show enc)
+                            (show other)
+                        )
+                    )
+          )
           logger
   logger <- askLoggerIO
   (rkey, eres) <- allocate (create cfg) (Prelude.mapM_ (destroyAndLog logger))
@@ -284,15 +320,16 @@ aacEncoderAllocate (Tagged cfg) = do
     Right enc@MkEncoder {encoderDelay, frameSize, audioSpecificConfig} -> do
       let i =
             MkAacEncoderInfo
-            { _aacEncoderInfoDelay = fromIntegral encoderDelay
-            , _aacEncoderInfoFrameSize = fromIntegral frameSize
-            , _aacEncoderInfoAudioSpecificConfig = audioSpecificConfig
-            , _aacEncoderInfoId = show enc
-            }
+              { _aacEncoderInfoDelay = fromIntegral encoderDelay,
+                _aacEncoderInfoFrameSize = fromIntegral frameSize,
+                _aacEncoderInfoAudioSpecificConfig = audioSpecificConfig,
+                _aacEncoderInfoId = show enc
+              }
       $logInfo (fromString (printf "allocated: %s" (show i)))
       return (Tagged enc, i)
 
 -- * Stateful Encoding
+
 -- | Type alias for the internal ReaderT monad of the aac encoder.
 type AacEncT rate channels aot m a = ReaderT Encoder m a
 
@@ -300,44 +337,45 @@ type AacEncT rate channels aot m a = ReaderT Encoder m a
 type AacFrame rate channels aot = Frame () () (Audio rate channels (Aac aot))
 
 -- | Convert linear audio to AAC encoded audio with the given encoder settings.
-encodeLinearToAac
-  :: ( KnownRate rate
-     , KnownChannelLayout channels
-     , KnownRate rate
-     , Show (AacAotProxy aot)
-     , CanBeSample (Pcm channels S16)
-     , MonadIO m
-     , MonadThrow m
-     , MonadLogger m
-     )
-  => Frame someSeq someTicks (Audio rate channels (Raw S16))
-  -> AacEncT rate channels aot m [AacFrame rate channels aot]
+encodeLinearToAac ::
+  ( KnownRate rate,
+    KnownChannelLayout channels,
+    KnownRate rate,
+    Show (AacAotProxy aot),
+    CanBeSample (Pcm channels S16),
+    MonadIO m,
+    MonadThrow m,
+    MonadLogger m
+  ) =>
+  Frame someSeq someTicks (Audio rate channels (Raw S16)) ->
+  AacEncT rate channels aot m [AacFrame rate channels aot]
 encodeLinearToAac (MkFrame _ _ !aIn) =
   let dIn = V.unsafeCast (aIn ^. mediaBuffer . mediaBufferVector)
-  in encodeAllFrames dIn []
+   in encodeAllFrames dIn []
 
 -- | (Internal) Convert linear audio to AAC encoded audio with the given encoder settings,
 -- from a raw sample vector.
 -- If the input contains more than 'frameSize' samples per channel, recurse
 -- until all input is consumed and return the generated frames.
-encodeAllFrames
-  :: forall m channels rate aot.
-     ( MonadLogger m
-     , MonadIO m
-     , MonadThrow m
-     , KnownChannelLayout channels
-     , KnownRate rate
-     , Show (AacAotProxy aot)
-     , V.Storable (Pcm channels S16)
-     )
-  => V.Vector Word16
-  -> [AacFrame rate channels aot]
-  -> AacEncT rate channels aot m [AacFrame rate channels aot]
+encodeAllFrames ::
+  forall m channels rate aot.
+  ( MonadLogger m,
+    MonadIO m,
+    MonadThrow m,
+    KnownChannelLayout channels,
+    KnownRate rate,
+    Show (AacAotProxy aot),
+    V.Storable (Pcm channels S16)
+  ) =>
+  V.Vector Word16 ->
+  [AacFrame rate channels aot] ->
+  AacEncT rate channels aot m [AacFrame rate channels aot]
 encodeAllFrames dIn acc
   | V.length dIn <= 0 = return []
   | otherwise = do
     e <- ask
     eres <- liftIO $ encode e dIn
+    $logDebug (fromString (printf "encode result: %s" (show eres)))
     case eres of
       Left err -> do
         $logError (fromString (printf "encoding failed: %s" (show err)))
@@ -350,41 +388,39 @@ encodeAllFrames dIn acc
           Just rest -> encodeAllFrames rest acc'
 
 -- | Flush any left over input and then also flush delay lines of the AAC encoder.
-flushAacEncoder
-  :: ( MonadIO m
-     , MonadLogger m
-     , MonadThrow m
-     , KnownChannelLayout channels
-     , KnownRate r
-     , Show (AacAotProxy aot)
-     , V.Storable (Pcm channels S16)
-     )
-  => AacEncT r channels aot m [AacFrame r channels aot]
+flushAacEncoder ::
+  ( MonadIO m,
+    MonadLogger m,
+    MonadThrow m,
+    KnownChannelLayout channels,
+    KnownRate r,
+    Show (AacAotProxy aot),
+    V.Storable (Pcm channels S16)
+  ) =>
+  AacEncT r channels aot m [AacFrame r channels aot]
 flushAacEncoder = do
   $logDebug "flushing"
   flushLoop []
- where
-   flushLoop acc = do
-     e <- ask
-     eres <- liftIO $ flush e
-     case eres of
-       Left err -> do
-         $logError (fromString (printf "flushing failed: %s" (show err)))
-         throwM err
-       Right MkEncodeResultEof -> do
-         $logInfo "flushed"
-         return (reverse acc)
-       Right MkEncodeResult {encodeResultSamples} -> do
-         acc' <- appendNextFrame acc encodeResultSamples
-         flushUntilEof acc'
-
-
+  where
+    flushLoop acc = do
+      e <- ask
+      eres <- liftIO $ flush e
+      case eres of
+        Left err -> do
+          $logError (fromString (printf "flushing failed: %s" (show err)))
+          throwM err
+        Right MkEncodeResultEof -> do
+          $logInfo "flushed"
+          return (reverse acc)
+        Right MkEncodeResult {encodeResultSamples} -> do
+          acc' <- appendNextFrame acc encodeResultSamples
+          flushUntilEof acc'
 
 -- | (Internal) Flush until the encoder returns the EOF return code.
-flushUntilEof
-  :: (MonadThrow m, MonadLogger m, MonadIO m)
-  => [AacFrame r channels aot]
-  -> AacEncT r channels aot m [AacFrame r channels aot]
+flushUntilEof ::
+  (MonadThrow m, MonadLogger m, MonadIO m) =>
+  [AacFrame r channels aot] ->
+  AacEncT r channels aot m [AacFrame r channels aot]
 flushUntilEof acc = do
   e <- ask
   eres <- liftIO $ flush e
@@ -401,11 +437,11 @@ flushUntilEof acc = do
 
 -- | (Internal) Create a new 'Frame' and increment the sequence number and
 --   update the timestamp from 'AacEncSt'
-appendNextFrame
-  :: Monad m
-  => [AacFrame rate channels aot]
-  -> Maybe (V.Vector Word8)
-  -> AacEncT rate channels aot m [AacFrame rate channels aot]
+appendNextFrame ::
+  Monad m =>
+  [AacFrame rate channels aot] ->
+  Maybe (V.Vector Word8) ->
+  AacEncT rate channels aot m [AacFrame rate channels aot]
 appendNextFrame acc = maybe (return acc) (\es -> (: acc) <$> mkNextFrame es)
   where
     mkNextFrame es = do

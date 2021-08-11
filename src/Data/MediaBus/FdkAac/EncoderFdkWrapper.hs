@@ -19,7 +19,6 @@ module Data.MediaBus.FdkAac.EncoderFdkWrapper
 import Control.Exception
 import Data.Coerce
 import Data.Int
-import Data.Monoid
 import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Storable.Mutable as VM
 import Data.Word
@@ -40,7 +39,7 @@ C.include "fdk-aac/aacenc_lib.h"
 -- works out great, an 'Encoder' is returned. Use 'destroy' to release the
 -- resources associated with an 'Encoder'.
 create :: Config -> IO (Either CreateFailure Encoder)
-create config@(MkConfig { configModules
+create config@MkConfig { configModules
                         , configChannels
                         , configAot
                         , configSampleRate
@@ -51,7 +50,7 @@ create config@(MkConfig { configModules
                         , configSignallingMode
                         , configChannelMode
                         , configAfterburner
-                        }) = do
+                        } = do
   let confBufMaxLen = 255 :: CUInt
   confBufC <- mallocForeignPtrBytes (fromIntegral confBufMaxLen)
   ((encDelayC, confBufSizeC, frameSizeC, aacEncoderCfgErrorC, errorCodeC), hPtr) <-
@@ -146,7 +145,7 @@ create config@(MkConfig { configModules
                  *($(unsigned char* confBufP) + i) = pInfo.confBuf[i];
               }
               *($(unsigned int* confBufSizeP)) = pInfo.confSize;
-              *($(unsigned int* encDelayP))    = pInfo.encoderDelay;
+              *($(unsigned int* encDelayP))    = pInfo.nDelay;
               *($(unsigned int* frameSizeP))   = pInfo.frameLength;
               return ((uintptr_t) phAacEncoder);
 
@@ -293,7 +292,7 @@ encode enc@MkEncoder {encoderHandle, unsafeOutBuffer} !vecW16 = do
             AACENC_ERROR e;
             HANDLE_AACENCODER phAacEncoder = (HANDLE_AACENCODER) $(uintptr_t encoderHandle);
 
-            /* Input buffer */
+
             AACENC_BufDesc inBuffDesc;
             INT inBuffIds[1]             = {IN_AUDIO_DATA};
             INT inBuffSizes[1]           = {$vec-len:vec * 2};
@@ -308,7 +307,7 @@ encode enc@MkEncoder {encoderHandle, unsafeOutBuffer} !vecW16 = do
               { .numInSamples = $vec-len:vec
               , .numAncBytes = 0 };
 
-            /* Ouput buffer */
+
             AACENC_BufDesc outBuffDesc;
             INT outBuffIds[1]             = {OUT_BITSTREAM_DATA};
             INT outBuffSizes[1]           = {$vec-len:unsafeOutBuffer};
@@ -339,7 +338,7 @@ flush enc@(MkEncoder {encoderHandle, unsafeOutBuffer}) = do
             AACENC_ERROR e;
             HANDLE_AACENCODER phAacEncoder = (HANDLE_AACENCODER) $(uintptr_t encoderHandle);
 
-            /* Input buffer */
+
             AACENC_BufDesc inBuffDesc;
             inBuffDesc.numBufs           = 0;
 
