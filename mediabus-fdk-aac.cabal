@@ -1,5 +1,6 @@
+cabal-version:       2.4
 name:                mediabus-fdk-aac
-version:             0.5.0.0
+version:             0.5.0.1
 synopsis:            Mediabus plugin for the Frauenhofer ISO-14496-3 AAC FDK
 description:         Please see README.md
 homepage:            https://github.com/sheyll/mediabus-fdk-aac
@@ -7,10 +8,9 @@ license:             BSD3
 license-file:        LICENSE
 author:              Sven Heyll
 maintainer:          svh@posteo.de
-copyright:           2016-2020 Sven Heyll, Lindenbaum GmbH
+copyright:           2016-2021 Sven Heyll, Lindenbaum GmbH
 category:            Sound
 build-type:          Simple
-cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
@@ -73,7 +73,7 @@ library
   -- These flags will be passed to the C compiler
   cc-options:          -std=c99 -Wall -O2
   -- Libraries to link the code with.
-  extra-libraries:     m
+  -- extra-libraries:     m
   PkgConfig-Depends:   fdk-aac >= 0.1.4
 
 benchmark encoder-benchmark
@@ -123,7 +123,7 @@ benchmark encoder-benchmark
                     , mediabus >= 0.5
                     , conduit
                     , vector <13
-  ghc-options:      -Wall -funbox-strict-fields -fno-warn-unused-do-bind
+  ghc-options:      -threaded -Wall -funbox-strict-fields -fno-warn-unused-do-bind
 
 
 test-suite examples
@@ -173,4 +173,4 @@ test-suite examples
                     , mediabus >= 0.5
                     , conduit
                     , vector <13
-  ghc-options:      -Wall -funbox-strict-fields -fno-warn-unused-do-bind
+  ghc-options:      -threaded -Wall -funbox-strict-fields -fno-warn-unused-do-bind

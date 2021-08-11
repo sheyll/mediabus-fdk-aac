@@ -1,32 +1,42 @@
-{pkgs ? import <nixpkgs> {}}:
-
-with rec {
-  inherit (pkgs) lib haskellPackages fetchFromGitHub;
-  inherit (haskellPackages) callCabal2nix;
-};
-
-let
-
-  mediabus = fetchFromGitHub {
-    owner = "sheyll";
-    repo = "mediabus";
-    rev = "0.5.0.0";
-    sha256 = null;
-  };
-
-  cleanSrc = lib.cleanSourceWith {
-        filter = 
-          (path: type:
-            let base = baseNameOf (toString path);
-            in !(lib.hasPrefix ".ghc.environment." base) &&
-               !(lib.hasSuffix ".nix" base) &&
-               !(lib.hasSuffix ".gz" base) &&
-               !(lib.hasSuffix ".zx" base) 
-          );
-        src = lib.cleanSource ./.;
+{ haskell-nix ? (import ./nix/pkgs.nix).haskell-nix
+, withProfiling ? false
+}:
+let this =
+  haskell-nix.project
+    {
+      src = haskell-nix.cleanSourceHaskell {
+        src = ./.;
+        name = "mediabus-fdk-aac";
       };
-in 
-  callCabal2nix "mediabus-fdk-aac" cleanSrc { 
-    fdk-aac = pkgs.fdk_aac; 
-    inherit mediabus;
-  }
+      projectFileName = "cabal.project";
+      compiler-nix-name = "ghc8105";
+      pkg-def-extras = [ ];
+      modules =
+        [
+          {
+            # HACK make 'cabal test' work
+            # https://github.com/input-output-hk/haskell.nix/issues/231#issuecomment-731699727
+            packages.mediabus-fdk-aac.components.tests.tests.build-tools = [
+              this.hsPkgs.hspec-discover
+            ];
+            packages.mediabus.components.tests.tests.build-tools = [
+              this.hsPkgs.hspec-discover
+            ];
+            packages.mediabus-fdk-aac.allComponent = {
+              enableExecutableProfiling = withProfiling;
+              enableLibraryProfiling = withProfiling;
+            };
+
+            # END OF HACK
+          }
+        ]
+        ++
+        (if withProfiling then
+          [
+            {
+              packages.mediabus-fdk-aac.package.ghcOptions = "-fprof-auto";
+            }
+          ] else [{ }]);
+    };
+in this
+
