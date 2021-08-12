@@ -8,6 +8,7 @@ where
 
 import Conduit
 import Control.Monad.Logger
+import Control.Monad.Reader.Class (ask)
 import Data.MediaBus
 import Data.MediaBus.FdkAac.Encoder
 import Data.String
@@ -46,26 +47,22 @@ encodeLinearToAacC ::
   ConduitT (SyncStream i () (Audio r channels (Raw S16))) (SyncStream i (AacEncoderInfo r channels aot) (Audio r channels (Aac aot))) m ()
 encodeLinearToAacC aacCfg = do
   (Tagged enc, info) <- lift $ aacEncoderAllocate aacCfg
+  $logDebug (fromString (printf "allocated AAC encoder: %s, config: %s, info: %s" (show enc) (show aacCfg) (show info)))
 
   runReaderC enc (encodeThenFlush info)
   where
     encodeThenFlush info = do
       awaitForever go
-      $logDebug (fromString (printf "stopping AAC encoding conduit: %s" (show info)))
+      enc <- ask
+      $logDebug (fromString (printf "end of input for AAC encoding conduit: %s" (show enc)))
       aacs <- lift flushAacEncoder
       Prelude.mapM_ yieldNextFrame aacs
+      $logDebug (fromString (printf "yielded all flushed AAC encoded media: %s" (show enc)))
       where
         go (MkStream (Next f)) = do
-          $logDebug "aac next A"
           aacs <- lift (encodeLinearToAac f)
-          $logDebug "aac next B"
           Prelude.mapM_ yieldNextFrame aacs
-          $logDebug "aac next C"
-
         go (MkStream (Start (MkFrameCtx fi _ _ _))) = do
-          $logDebug "aac start A"
           lift flushAacEncoder >>= Prelude.mapM_ yieldNextFrame
-          $logDebug "aac start B"
           let outStart = MkFrameCtx fi () () info
           yieldStartFrameCtx outStart
-          $logDebug "aac start C"

@@ -61,6 +61,7 @@ library
                      , lens
                      , mediabus >= 0.5
                      , monad-logger
+                     , mtl
                      , random
                      , resourcet
                      , spool
@@ -79,7 +80,7 @@ library
 benchmark encoder-benchmark
   type:             exitcode-stdio-1.0
   hs-source-dirs:   bench
-  main-is:          Encoder.hs
+  main-is:          Main.hs
   default-language:    Haskell2010
   default-extensions:  BangPatterns
                      , ConstraintKinds

@@ -39,7 +39,8 @@ import Conduit
 import Control.DeepSeq
 import Control.Lens
 import Control.Monad.Logger
-import Control.Monad.Trans.Reader
+import Control.Monad.Reader.Class (MonadReader (..), asks)
+import Control.Monad.Trans.Reader (ReaderT)
 import Control.Monad.Trans.Resource
 import Data.Kind
 import Data.MediaBus
@@ -59,8 +60,7 @@ import Text.Printf
 data Aac (aot :: AacAot)
 
 data instance Audio r c (Aac aot) = MkAacBuffer
-  { aacFrameMediaData ::
-      !(V.Vector Word8),
+  { aacFrameMediaData :: !(V.Vector Word8),
     aacFrameDuration :: !(Ticks64 r)
   }
   deriving (Generic)
@@ -85,10 +85,7 @@ instance HasMediaBuffer (Audio r c (Aac aot)) (Audio r c (Aac aot)) where
       (MkMediaBuffer . aacFrameMediaData)
       (\aacFrame (MkMediaBuffer v) -> aacFrame {aacFrameMediaData = v})
 
-instance
-  (KnownRate r) =>
-  HasDuration (Audio r c (Aac aot))
-  where
+instance (KnownRate r) => HasDuration (Audio r c (Aac aot)) where
   getDuration MkAacBuffer {aacFrameDuration} =
     from nominalDiffTime # aacFrameDuration
   getDurationTicks MkAacBuffer {aacFrameDuration} =
@@ -345,10 +342,11 @@ encodeLinearToAac ::
     CanBeSample (Pcm channels S16),
     MonadIO m,
     MonadThrow m,
-    MonadLogger m
+    MonadLogger m,
+    MonadReader Encoder m
   ) =>
   Frame someSeq someTicks (Audio rate channels (Raw S16)) ->
-  AacEncT rate channels aot m [AacFrame rate channels aot]
+  m [AacFrame rate channels aot]
 encodeLinearToAac (MkFrame _ _ !aIn) =
   let dIn = V.unsafeCast (aIn ^. mediaBuffer . mediaBufferVector)
    in encodeAllFrames dIn []
@@ -365,11 +363,12 @@ encodeAllFrames ::
     KnownChannelLayout channels,
     KnownRate rate,
     Show (AacAotProxy aot),
-    V.Storable (Pcm channels S16)
+    V.Storable (Pcm channels S16),
+    MonadReader Encoder m
   ) =>
   V.Vector Word16 ->
   [AacFrame rate channels aot] ->
-  AacEncT rate channels aot m [AacFrame rate channels aot]
+  m [AacFrame rate channels aot]
 encodeAllFrames dIn acc
   | V.length dIn <= 0 = return []
   | otherwise = do
@@ -395,41 +394,29 @@ flushAacEncoder ::
     KnownChannelLayout channels,
     KnownRate r,
     Show (AacAotProxy aot),
-    V.Storable (Pcm channels S16)
+    V.Storable (Pcm channels S16),
+    MonadReader Encoder m
   ) =>
-  AacEncT r channels aot m [AacFrame r channels aot]
+  m [AacFrame r channels aot]
 flushAacEncoder = do
-  $logDebug "flushing"
-  flushLoop []
-  where
-    flushLoop acc = do
-      e <- ask
-      eres <- liftIO $ flush e
-      case eres of
-        Left err -> do
-          $logError (fromString (printf "flushing failed: %s" (show err)))
-          throwM err
-        Right MkEncodeResultEof -> do
-          $logInfo "flushed"
-          return (reverse acc)
-        Right MkEncodeResult {encodeResultSamples} -> do
-          acc' <- appendNextFrame acc encodeResultSamples
-          flushUntilEof acc'
+  e <- ask
+  $logDebug (fromString (printf "flushing: %s" (show e)))
+  flushUntilEof []
 
 -- | (Internal) Flush until the encoder returns the EOF return code.
 flushUntilEof ::
-  (MonadThrow m, MonadLogger m, MonadIO m) =>
+  (MonadThrow m, MonadLogger m, MonadIO m, MonadReader Encoder m) =>
   [AacFrame r channels aot] ->
-  AacEncT r channels aot m [AacFrame r channels aot]
+  m [AacFrame r channels aot]
 flushUntilEof acc = do
   e <- ask
   eres <- liftIO $ flush e
   case eres of
     Left err -> do
-      $logError (fromString (printf "flushing failed: %s" (show err)))
+      $logError (fromString (printf "flushing %s failed: %s" (show e) (show err)))
       throwM err
     Right MkEncodeResultEof -> do
-      $logInfo "flushed"
+      $logInfo (fromString (printf "flushed: %s" (show e)))
       return (reverse acc)
     Right MkEncodeResult {encodeResultSamples} -> do
       acc' <- appendNextFrame acc encodeResultSamples
@@ -438,11 +425,11 @@ flushUntilEof acc = do
 -- | (Internal) Create a new 'Frame' and increment the sequence number and
 --   update the timestamp from 'AacEncSt'
 appendNextFrame ::
-  Monad m =>
+  (MonadReader Encoder m) =>
   [AacFrame rate channels aot] ->
   Maybe (V.Vector Word8) ->
-  AacEncT rate channels aot m [AacFrame rate channels aot]
-appendNextFrame acc = maybe (return acc) (\es -> (: acc) <$> mkNextFrame es)
+  m [AacFrame rate channels aot]
+appendNextFrame acc = maybe (return acc) (fmap (: acc) . mkNextFrame)
   where
     mkNextFrame es = do
       len <- fromIntegral <$> asks frameSize

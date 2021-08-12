@@ -17,31 +17,33 @@ let
         modules =
           [
             {
-              packages.mediabus-fdk-aac.components.library.pkgconfig = lib.mkForce [ [ fdk_aac ] ];
-              # HACK make 'cabal test' work
-              # https://github.com/input-output-hk/haskell.nix/issues/231#issuecomment-731699727
+              packages.mediabus-fdk-aac.components.library = {
+                pkgconfig = lib.mkForce [ [ fdk_aac ] ];
+                enableLibraryProfiling = withProfiling;
+                ghcOptions = if withProfiling then [ "-fprof-auto" ] else [];
+              };
+              packages.mediabus-fdk-aac.components.benchmarks.encoder-benchmark = {
+                pkgconfig = lib.mkForce [ [ fdk_aac ] ];
+                enableExecutableProfiling = withProfiling;
+                ghcOptions = if withProfiling then [ "-fprof-auto" ] else [];
+              };
               packages.mediabus-fdk-aac.components.tests.examples = {
+                # HACK make 'cabal test' work
+                # https://github.com/input-output-hk/haskell.nix/issues/231#issuecomment-731699727
                 build-tools = [
                   this.hsPkgs.hspec-discover
                 ];
+                # END OF HACK
                 pkgconfig = lib.mkForce [ [ fdk_aac ] ];
                 enableExecutableProfiling = withProfiling;
-                ghcOptions = if withProfiling then ["-fprof-auto"] else [];
+                ghcOptions = if withProfiling then [ "-fprof-auto" ] else [];
               };
+              # HACK make 'cabal test' work
+              # https://github.com/input-output-hk/haskell.nix/issues/231#issuecomment-731699727
               packages.mediabus.components.tests.tests.build-tools = [
                 this.hsPkgs.hspec-discover
               ];
               # END OF HACK
-              packages.mediabus-fdk-aac.allComponent = {
-                enableExecutableProfiling = withProfiling;
-                enableLibraryProfiling = withProfiling;
-              } // (
-                if withProfiling then
-                  {
-                    ghcOptions = "-fprof-auto";
-                  }
-                else {}
-              );
             }
           ];
       };
