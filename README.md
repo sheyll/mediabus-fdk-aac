@@ -1,6 +1,5 @@
 # Frauenhofer ISO-14496-3 AAC FDK [mediabus](https://github.com/sheyll/mediabus) Integration
 
-[![Build Status](https://travis-ci.org/sheyll/mediabus-fdk-aac.svg?branch=master)](https://travis-ci.org/sheyll/mediabus-fdk-aac)
 [![Hackage](https://img.shields.io/hackage/v/mediabus-fdk-aac.svg)](http://hackage.haskell.org/package/mediabus-fdk-aac)
 
 A wrapper around the Frauenhofer Development Kit (FDK) for AAC.
@@ -30,7 +29,7 @@ In this specific case `encodeLinearToAacC` has the type:
 
 ```haskell
 
-encodeLinearToAacC ::  
+encodeLinearToAacC ::
      AacEncoderConfig (Hz 48000) Stereo 'HighEfficiency   -- The encoder cofiguration
   -> Conduit                                              -- The resulting Conduit
           (Stream SrcId32                                      -- Input: The Stream id is a 'SrcId32'
@@ -43,7 +42,7 @@ encodeLinearToAacC ::
 
           (Stream SrcId32                                             -- Output:
                   SeqNum64
-                  (Ticks64 (Hz 48000))               
+                  (Ticks64 (Hz 48000))
                   (AacEncoderInfo (Hz 48000) Stereo 'HighEfficiency)  -- AAC Stream Info: Framelength and Audio Specific Config
                   (Audio (Hz 48000) Stereo (Aac 'HighEfficiency)))    -- AAC-HE audio data
 ```
