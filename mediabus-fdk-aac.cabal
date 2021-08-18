@@ -75,7 +75,7 @@ library
   cc-options:          -std=c99 -Wall -O2
   -- Libraries to link the code with.
   -- extra-libraries:     m
-  PkgConfig-Depends:   fdk-aac >= 0.1.4
+  PkgConfig-Depends:   fdk-aac ^>= 0.1.4
 
 benchmark encoder-benchmark
   type:             exitcode-stdio-1.0
@@ -113,7 +113,7 @@ benchmark encoder-benchmark
                      , TypeOperators
                      , TypeSynonymInstances
                      , UnicodeSyntax
-  build-depends:      base >= 4.12 && < 5
+  build-depends:      base ^>= 4.14
                     , deepseq
                     , ghc-prim
                     , lens
@@ -121,7 +121,7 @@ benchmark encoder-benchmark
                     , time
                     , criterion
                     , mediabus-fdk-aac
-                    , mediabus >= 0.5
+                    , mediabus ^>= 0.5.0.1
                     , conduit
                     , vector <13
   ghc-options:      -threaded -Wall -funbox-strict-fields -fno-warn-unused-do-bind
@@ -163,7 +163,7 @@ test-suite examples
                      , TypeOperators
                      , TypeSynonymInstances
                      , UnicodeSyntax
-  build-depends:      base >= 4.12 && < 5
+  build-depends:      base ^>= 4.14
                     , deepseq
                     , ghc-prim
                     , lens
@@ -171,7 +171,7 @@ test-suite examples
                     , time
                     , criterion
                     , mediabus-fdk-aac
-                    , mediabus >= 0.5
+                    , mediabus ^>= 0.5.0.1
                     , conduit
                     , vector <13
   ghc-options:      -threaded -Wall -funbox-strict-fields -fno-warn-unused-do-bind -rtsopts
