@@ -15,39 +15,44 @@ import Data.MediaBus.FdkAac.Encoder
     aacEncoderConfig,
   )
 import Data.Proxy (Proxy (Proxy))
+import Data.Time (NominalDiffTime)
 
 main :: IO ()
 main = do
-  void (encodeOneSeconfOfSilence @Mono)
-  void (encodeOneSeconfOfSilence @Stereo)
+  void (encodeSecondsOfSilence @Mono 10)
+  void (encodeSecondsOfSilence @Stereo 10)
 
-encodeOneSeconfOfSilence ::
+encodeSecondsOfSilence ::
   forall c.
   ( CanBeSample (Pcm c S16),
     KnownChannelLayout c,
     Show (Pcm c S16),
     CanBeBlank (Pcm c S16)
   ) =>
+  NominalDiffTime ->
   IO
     [ Stream
         SrcId32
         SeqNum64
-        (Ticks64 (Hz 48000))
-        (AacEncoderInfo (Hz 48000) c 'HighEfficiency)
-        (Audio (Hz 48000) c (Aac 'HighEfficiency))
+        (Ticks64 (Hz 16000))
+        (AacEncoderInfo (Hz 16000) c 'HighEfficiency)
+        [Frame SeqNum64 (Ticks64 (Hz 16000)) (Audio (Hz 16000) c (Aac 'HighEfficiency))]
     ]
-encodeOneSeconfOfSilence =
+encodeSecondsOfSilence t =
   runStdoutLoggingT $
     runResourceT $
       runConduit $
-        yieldNextFrame (MkFrame () () pcmAudioOneSecond)
-          .| traceShowC 1 "raw"
+        yieldNextFrame (MkFrame () () pcmAudioSeconds)
+          .| traceShowC 1 "pcm"
           .| encodeLinearToAacC encoderConfig
-          .| traceShowC 1 "encoded"
           .| setSequenceNumberAndTimestampC
-          .| traceShowSink 1 "timestamped and sequenced"
+          .| traceShowC 1 "aac"
+          .| aggregateDurationC 2
+          .| setSequenceNumberAndTimestampC
+          .| traceShowSink 1 "aac-aggregated"
   where
-    pcmAudioOneSecond :: Audio (Hz 48000) c (Raw S16)
-    pcmAudioOneSecond = blankFor 1
+    pcmAudioSeconds :: Audio (Hz 16000) c (Raw S16)
+    pcmAudioSeconds = blankFor t
 
-    encoderConfig = aacEncoderConfig (Proxy :: Proxy (Audio (Hz 48000) c (Aac 'HighEfficiency)))
+    encoderConfig =
+      aacEncoderConfig (Proxy :: Proxy (Audio (Hz 16000) c (Aac 'HighEfficiency)))

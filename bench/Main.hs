@@ -83,7 +83,7 @@ encodeNFrames ::
   [SyncStream SrcId32 () (Audio r channels (Raw S16))] ->
   IO [Stream SrcId32 SeqNum64 (Ticks r Word64) (AacEncoderInfo r channels aot) (Audio r channels (Aac aot))]
 encodeNFrames cfg pcms =
-  runStdoutLoggingT $
+  runNoLoggingT $
     runConduitRes $
       sourceList pcms .| encodeLinearToAacC cfg .| setSequenceNumberAndTimestampC
         .| consume

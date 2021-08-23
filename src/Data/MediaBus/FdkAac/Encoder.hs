@@ -67,6 +67,23 @@ data instance Audio r c (Aac aot) = MkAacBuffer
 
 instance
   (KnownRate r, KnownChannelLayout c, Show (AacAotProxy aot)) =>
+  Semigroup (Audio r c (Aac aot))
+  where
+  (<>) MkAacBuffer {aacFrameMediaData = _, aacFrameDuration = 0} r = r
+  (<>) l MkAacBuffer {aacFrameMediaData = _, aacFrameDuration = 0} = l
+  (<>)
+    MkAacBuffer {aacFrameMediaData = !lm, aacFrameDuration = !ld}
+    MkAacBuffer {aacFrameMediaData = !rm, aacFrameDuration = !rd} =
+      MkAacBuffer {aacFrameMediaData = lm <> rm, aacFrameDuration = ld + rd}
+
+instance
+  (KnownRate r, KnownChannelLayout c, Show (AacAotProxy aot)) =>
+  Monoid (Audio r c (Aac aot))
+  where
+  mempty = MkAacBuffer {aacFrameMediaData = mempty, aacFrameDuration = 0}
+
+instance
+  (KnownRate r, KnownChannelLayout c, Show (AacAotProxy aot)) =>
   IsMedia (Audio r c (Aac aot))
 
 instance
@@ -122,6 +139,15 @@ instance
           . showChar ' '
           . showsPrec 11 (MkChannelLayoutProxy :: ChannelLayoutProxy c)
       )
+
+instance forall r c aot.
+  (KnownRate r, KnownChannelLayout c, Show (AacAotProxy aot)) =>
+  CanSegment (Audio r c (Aac aot))
+  where
+  splitAfterDuration dpx aac =
+    if getStaticDuration dpx == getDuration aac
+      then Just (MkSegment aac, mempty)
+      else Nothing
 
 -- ** Aac Configuration
 
