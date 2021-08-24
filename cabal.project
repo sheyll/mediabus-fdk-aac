@@ -3,8 +3,8 @@ packages: .
 optional-packages:
   ./vendored/*
 
---source-repository-package
---  type: git
---  location: https://github.com/sheyll/mediabus.git
---  tag: 0.8.0
---  --sha256:13k337icqsdspq030mjlzdg40w4ipsyfa21gx856wrp5abc14js8
+-- source-repository-package
+--   type: git
+--   location: https://github.com/sheyll/mediabus.git
+--   tag: 0.8.0
+--   --sha256: 0y7zisvr9sw03z7kzhy3gfv9c2lvhh0z9k63srs251gws8pqpik2

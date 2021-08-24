@@ -32,7 +32,6 @@ import Text.Printf (printf)
 encodeLinearToAacC ::
   forall channels r aot i m.
   ( MonadLoggerIO m,
-    MonadThrow m,
     MonadResource m,
     KnownChannelLayout channels,
     KnownRate r,
@@ -41,7 +40,8 @@ encodeLinearToAacC ::
     KnownNat (GetAacAot aot),
     Show i,
     CanBeSample (Pcm channels S16),
-    Show (Pcm channels S16)
+    Show (Pcm channels S16),
+    MonadUnliftIO m
   ) =>
   AacEncoderConfig r channels aot ->
   ConduitT (SyncStream i () (Audio r channels (Raw S16))) (SyncStream i (AacEncoderInfo r channels aot) (Audio r channels (Aac aot))) m ()

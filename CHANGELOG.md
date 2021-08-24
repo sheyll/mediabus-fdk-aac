@@ -1,5 +1,9 @@
 # Changes
 
+## 0.7.0
+
+* Switch to unliftio
+
 ## 0.6.0
 
 * Update to mediabus-0.8.0

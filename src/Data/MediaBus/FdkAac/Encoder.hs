@@ -41,7 +41,6 @@ import Control.Lens
 import Control.Monad.Logger
 import Control.Monad.Reader.Class (MonadReader (..), asks)
 import Control.Monad.Trans.Reader (ReaderT)
-import Control.Monad.Trans.Resource
 import Data.Kind
 import Data.MediaBus
 import Data.MediaBus.FdkAac.EncoderFdkWrapper
@@ -53,6 +52,8 @@ import Data.Word
 import GHC.Generics (Generic)
 import GHC.TypeLits
 import Text.Printf
+import UnliftIO
+import UnliftIO.Resource
 
 -- * MediaBus Aac Encoder
 
@@ -140,7 +141,8 @@ instance
           . showsPrec 11 (MkChannelLayoutProxy :: ChannelLayoutProxy c)
       )
 
-instance forall r c aot.
+instance
+  forall r c aot.
   (KnownRate r, KnownChannelLayout c, Show (AacAotProxy aot)) =>
   CanSegment (Audio r c (Aac aot))
   where
@@ -306,40 +308,39 @@ aacEncoderAllocate ::
     KnownChannelLayout channels,
     Show (AacAotProxy aot),
     KnownNat (GetAacAot aot),
-    MonadIO m,
+    MonadUnliftIO m,
     MonadResource m,
-    MonadThrow m,
+    MonadLogger m,
     MonadLoggerIO m
   ) =>
   AacEncoderConfig rate channels aot ->
   m (AacEncoderContext rate channels aot, AacEncoderInfo rate channels aot)
 aacEncoderAllocate (Tagged cfg) = do
-  let destroyAndLog logger enc =
-        runLoggingT
-          ( do
-              $logDebug (fromString (printf "%s destroying" (show enc)))
-              res <- liftIO (destroy enc)
-              case res of
-                AacEncOk ->
-                  $logInfo (fromString (printf "%s destroyed" (show enc)))
-                other ->
-                  $logError
-                    ( fromString
-                        ( printf
-                            "%s failed to destroy: %s"
-                            (show enc)
-                            (show other)
-                        )
+  let destroyAndLog enc =
+        do
+          $logDebug (fromString (printf "%s destroying" (show enc)))
+          res <- liftIO (destroy enc)
+          case res of
+            AacEncOk ->
+              $logInfo (fromString (printf "%s destroyed" (show enc)))
+            other ->
+              $logError
+                ( fromString
+                    ( printf
+                        "%s failed to destroy: %s"
+                        (show enc)
+                        (show other)
                     )
-          )
-          logger
-  logger <- askLoggerIO
-  (rkey, eres) <- allocate (create cfg) (Prelude.mapM_ (destroyAndLog logger))
+                )
+
+  (rkey, eres) <- do
+    logger <- askLoggerIO
+    allocate (create cfg) ((`runLoggingT` logger) . Prelude.mapM_ destroyAndLog)
   case eres of
     Left err -> do
       $logError (fromString (printf "encoder allocation failed: %s" (show err)))
       release rkey
-      throwM err
+      throwIO err
     Right enc@MkEncoder {encoderDelay, frameSize, audioSpecificConfig} -> do
       let i =
             MkAacEncoderInfo
@@ -366,8 +367,7 @@ encodeLinearToAac ::
     KnownRate rate,
     Show (AacAotProxy aot),
     CanBeSample (Pcm channels S16),
-    MonadIO m,
-    MonadThrow m,
+    MonadUnliftIO m,
     MonadLogger m,
     MonadReader Encoder m
   ) =>
@@ -384,8 +384,7 @@ encodeLinearToAac (MkFrame _ _ !aIn) =
 encodeAllFrames ::
   forall m channels rate aot.
   ( MonadLogger m,
-    MonadIO m,
-    MonadThrow m,
+    MonadUnliftIO m,
     KnownChannelLayout channels,
     KnownRate rate,
     Show (AacAotProxy aot),
@@ -404,7 +403,7 @@ encodeAllFrames dIn acc
     case eres of
       Left err -> do
         $logError (fromString (printf "encoding failed: %s" (show err)))
-        throwM err
+        throwIO err
       Right MkEncodeResultEof -> return (reverse acc)
       Right MkEncodeResult {encodeResultLeftOverInput, encodeResultSamples} -> do
         acc' <- appendNextFrame acc encodeResultSamples
@@ -414,9 +413,8 @@ encodeAllFrames dIn acc
 
 -- | Flush any left over input and then also flush delay lines of the AAC encoder.
 flushAacEncoder ::
-  ( MonadIO m,
+  ( MonadUnliftIO m,
     MonadLogger m,
-    MonadThrow m,
     KnownChannelLayout channels,
     KnownRate r,
     Show (AacAotProxy aot),
@@ -431,7 +429,7 @@ flushAacEncoder = do
 
 -- | (Internal) Flush until the encoder returns the EOF return code.
 flushUntilEof ::
-  (MonadThrow m, MonadLogger m, MonadIO m, MonadReader Encoder m) =>
+  (MonadUnliftIO m, MonadLogger m, MonadReader Encoder m) =>
   [AacFrame r channels aot] ->
   m [AacFrame r channels aot]
 flushUntilEof acc = do
@@ -440,7 +438,7 @@ flushUntilEof acc = do
   case eres of
     Left err -> do
       $logError (fromString (printf "flushing %s failed: %s" (show e) (show err)))
-      throwM err
+      throwIO err
     Right MkEncodeResultEof -> do
       $logInfo (fromString (printf "flushed: %s" (show e)))
       return (reverse acc)

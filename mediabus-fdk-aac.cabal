@@ -1,6 +1,6 @@
 cabal-version:       2.4
 name:                mediabus-fdk-aac
-version:             0.6.0
+version:             0.7.0
 synopsis:            Mediabus plugin for the Frauenhofer ISO-14496-3 AAC FDK
 description:         Please see README.md
 homepage:            https://github.com/sheyll/mediabus-fdk-aac
@@ -69,6 +69,7 @@ library
                      , text
                      , time
                      , transformers
+                     , unliftio
                      , vector <13
   -- c-sources:         src/Data/MediaBus/FdkAac/EncoderFdkWrapper.c
   -- These flags will be passed to the C compiler
@@ -174,4 +175,5 @@ test-suite examples
                     , mediabus ^>= 0.8
                     , conduit
                     , vector <13
-  ghc-options:      -threaded -Wall -funbox-strict-fields -fno-warn-unused-do-bind -rtsopts
+                    , unliftio
+  ghc-options:      -threaded -Wall -funbox-strict-fields -fno-warn-unused-do-bind -rtsopts -O1
