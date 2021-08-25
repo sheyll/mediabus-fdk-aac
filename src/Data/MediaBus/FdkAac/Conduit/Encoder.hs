@@ -26,7 +26,7 @@ import Text.Printf (printf)
 -- The output sequence numbers start from zero and increase
 -- monotonic. 'Start' events don't lead to resetting neither sequence numbers
 -- nor timestamps.
--- The timestamps start at the encoder delay and are increased by 'frameSize'
+-- The timestamps start at the encoder delay and are increased by the input samples encoded
 -- and the type signature requires that the timestamp unit for 'Frame's has the
 -- same sampling rate as the encoded audio.
 encodeLinearToAacC ::
@@ -44,7 +44,11 @@ encodeLinearToAacC ::
     MonadUnliftIO m
   ) =>
   AacEncoderConfig r channels aot ->
-  ConduitT (SyncStream i () (Audio r channels (Raw S16))) (SyncStream i (AacEncoderInfo r channels aot) (Audio r channels (Aac aot))) m ()
+  ConduitT
+    (SyncStream i () (Audio r channels (Raw S16)))
+    (SyncStream i (AacEncoderInfo r channels aot) (Audio r channels (Aac aot)))
+    m
+    ()
 encodeLinearToAacC aacCfg = do
   (Tagged enc, info) <- lift $ aacEncoderAllocate aacCfg
   $logDebug (fromString (printf "allocated AAC encoder: %s, config: %s, info: %s" (show enc) (show aacCfg) (show info)))

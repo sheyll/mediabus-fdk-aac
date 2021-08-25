@@ -27,6 +27,7 @@ import Foreign.C.Types
 import Foreign.ForeignPtr (mallocForeignPtrBytes, withForeignPtr)
 import qualified Language.C.Inline as C
 import Text.Printf
+import UnliftIO
 
 C.context (C.baseCtx <> C.vecCtx)
 
@@ -176,6 +177,7 @@ create
         asc <- V.freeze ascVM
         let outSize = fromIntegral (768 * configChannels)
         outV <- VM.new outSize
+        inBufRef <- newIORef 0
         return $
           Right $
             MkEncoder
@@ -184,7 +186,8 @@ create
                 encoderDelay = fromIntegral encDelayC,
                 frameSize = fromIntegral frameSizeC,
                 unsafeOutBuffer = outV,
-                audioSpecificConfig = coerce asc
+                audioSpecificConfig = coerce asc,
+                samplesInBufferRef = inBufRef
               }
 
 -- | A subset of the possible encoder configuration parameters
@@ -284,7 +287,10 @@ data Encoder = MkEncoder
     channelCount :: !CUInt,
     encoderDelay :: !Word32,
     frameSize :: !Word32,
-    audioSpecificConfig :: !(V.Vector Word8)
+    audioSpecificConfig :: !(V.Vector Word8),
+    -- | The number of input samples per channel inside the decoder buffer,
+    --  that were not yet encoded.
+    samplesInBufferRef :: !(IORef Word64)
   }
 
 -- | This instance only shows the 'encoderHandle' as hex string.
@@ -407,36 +413,45 @@ toEncodeResult vec MkEncoder {unsafeOutBuffer, channelCount} ((numOutBytes, numI
               let !numInSamplesI = fromIntegral numInSamples
                   !consumedFrames =
                     fromIntegral numInSamplesI `div` fromIntegral channelCount
-                  !leftOverInput =
-                    if numInSamplesI >= V.length vec
-                      then Nothing
-                      else
-                        let !inSliceLen = V.length vec - numInSamplesI
-                            !inSlice = V.slice numInSamplesI inSliceLen vec
-                         in Just inSlice
                   !numOutBytesI = fromIntegral numOutBytes
-              !encodedOutput <-
-                if numOutBytesI == 0
-                  then return Nothing
-                  else do
-                    !outTooLarge <- V.freeze unsafeOutBuffer
-                    return $
-                      Just $ V.force $ V.slice 0 numOutBytesI outTooLarge
-              return $
-                Right
-                  MkEncodeResult
-                    { encodeResultConsumedFrames = consumedFrames,
-                      encodeResultLeftOverInput = coerce leftOverInput,
-                      encodeResultSamples = coerce encodedOutput
-                    }
+
+              if numOutBytesI == 0
+                then
+                  return $
+                    Right
+                      MkEncodeResultNotFinished
+                        { encodeResultConsumedSamplesPerChannel = consumedFrames
+                        }
+                else do
+                  let !leftOverInput =
+                        if numInSamplesI >= V.length vec
+                          then Nothing
+                          else
+                            let !inSliceLen = V.length vec - numInSamplesI
+                                !inSlice = V.slice numInSamplesI inSliceLen vec
+                             in Just inSlice
+                  !outTooLarge <- V.freeze unsafeOutBuffer
+                  let !samples = V.force $ V.slice 0 numOutBytesI outTooLarge
+                  return $
+                    Right
+                      MkEncodeResult
+                        { encodeResultConsumedSamplesPerChannel = consumedFrames,
+                          encodeResultLeftOverInput = coerce leftOverInput,
+                          encodeResultSamples = coerce samples
+                        }
 
 -- | Result of 'encode'
 data EncodeResult
   = MkEncodeResultEof
+  | MkEncodeResultNotFinished
+      { -- | Number of samples from the input
+        -- that were processed by the encoder
+        encodeResultConsumedSamplesPerChannel :: !Word64
+      }
   | MkEncodeResult
       { -- | Number of samples from the input
         -- that were processed by the encoder
-        encodeResultConsumedFrames :: !Word64,
+        encodeResultConsumedSamplesPerChannel :: !Word64,
         -- | The unprocessed
         -- rest of the input.
         -- Only if the input
@@ -455,7 +470,7 @@ data EncodeResult
         -- representing the encded
         -- samples delayed by
         -- 'frameLength'.
-        encodeResultSamples :: !(Maybe (V.Vector Word8))
+        encodeResultSamples :: !(V.Vector Word8)
       }
 
 instance Show EncodeResult where
@@ -463,17 +478,26 @@ instance Show EncodeResult where
   showsPrec
     d
     MkEncodeResult
-      { encodeResultConsumedFrames,
+      { encodeResultConsumedSamplesPerChannel,
         encodeResultLeftOverInput,
         encodeResultSamples
       } =
       showParen (d > 10) $
-        showString "encode result: consumed input samples: "
-          . shows encodeResultConsumedFrames
-          . showString ", left over input values: "
+        showString "encode result: processed input samples: "
+          . shows encodeResultConsumedSamplesPerChannel
+          . showString ", left over input samples: "
           . maybe (showString "n/a") (shows . V.length) encodeResultLeftOverInput
-          . showString ", encoded output bytes: "
-          . maybe (showString "n/a") (shows . V.length) encodeResultSamples
+          . showString ", size of compressed output: "
+          . (shows . V.length) encodeResultSamples
+  showsPrec
+    d
+    MkEncodeResultNotFinished
+      { encodeResultConsumedSamplesPerChannel
+      } =
+      showParen (d > 10) $
+        showString "encode result: processed input samples: "
+          . shows encodeResultConsumedSamplesPerChannel
+          . showString " no output generated"
 
 -- | Information about encoder when an 'encode' failure occured.
 data EncodeFailure = MkEncodeFailure

@@ -39,7 +39,7 @@ import Conduit
 import Control.DeepSeq
 import Control.Lens
 import Control.Monad.Logger
-import Control.Monad.Reader.Class (MonadReader (..), asks)
+import Control.Monad.Reader.Class (MonadReader (..))
 import Control.Monad.Trans.Reader (ReaderT)
 import Data.Kind
 import Data.MediaBus
@@ -125,7 +125,7 @@ instance
           . showString ", data: "
           . showsPrec 11 (V.length aacFrameMediaData)
           . showString " bytes starting with: "
-          . showsPrec 11 (V.take 16 aacFrameMediaData)
+          . showsPrec 11 (aacFrameMediaData)
       )
 
 instance
@@ -399,17 +399,38 @@ encodeAllFrames dIn acc
   | otherwise = do
     e <- ask
     eres <- liftIO $ encode e dIn
-    $logDebug (fromString (printf "encode result: %s" (show eres)))
+    $logDebug (fromString (printf "encoding: %s encode result: %s" (show e) (show eres)))
     case eres of
       Left err -> do
-        $logError (fromString (printf "encoding failed: %s" (show err)))
+        writeIORef (samplesInBufferRef e) 0
+        $logError (fromString (printf "encoding: %s failed: %s" (show e) (show err)))
         throwIO err
-      Right MkEncodeResultEof -> return (reverse acc)
-      Right MkEncodeResult {encodeResultLeftOverInput, encodeResultSamples} -> do
-        acc' <- appendNextFrame acc encodeResultSamples
-        case encodeResultLeftOverInput of
-          Nothing -> return (reverse acc')
-          Just rest -> encodeAllFrames rest acc'
+      Right MkEncodeResultEof -> do
+        writeIORef (samplesInBufferRef e) 0
+        return (reverse acc)
+      Right
+        MkEncodeResultNotFinished {encodeResultConsumedSamplesPerChannel} -> do
+          modifyIORef (samplesInBufferRef e) (+ encodeResultConsumedSamplesPerChannel)
+          return (reverse acc)
+      Right
+        encRes@MkEncodeResult {} -> do
+          alreadyConsumed <- atomicModifyIORef (samplesInBufferRef e) (0,)
+          let acc' =
+                MkFrame
+                  ()
+                  ()
+                  ( MkAacBuffer
+                      (encodeResultSamples  encRes)
+                      ( MkTicks
+                          ( encodeResultConsumedSamplesPerChannel encRes
+                              + alreadyConsumed
+                          )
+                      )
+                  ) :
+                acc
+          case encodeResultLeftOverInput encRes of
+            Nothing -> return (reverse acc')
+            Just rest -> encodeAllFrames rest acc'
 
 -- | Flush any left over input and then also flush delay lines of the AAC encoder.
 flushAacEncoder ::
@@ -435,28 +456,33 @@ flushUntilEof ::
 flushUntilEof acc = do
   e <- ask
   eres <- liftIO $ flush e
+  $logDebug (fromString (printf "flushing %s: encode result: %s" (show e) (show eres)))
   case eres of
     Left err -> do
-      $logError (fromString (printf "flushing %s failed: %s" (show e) (show err)))
+      $logError (fromString (printf "flushing %s: failed: %s" (show e) (show err)))
       throwIO err
-    Right MkEncodeResultEof -> do
-      $logInfo (fromString (printf "flushed: %s" (show e)))
+    Right MkEncodeResultEof ->
       return (reverse acc)
-    Right MkEncodeResult {encodeResultSamples} -> do
-      acc' <- appendNextFrame acc encodeResultSamples
-      flushUntilEof acc'
-
--- | (Internal) Create a new 'Frame' and increment the sequence number and
---   update the timestamp from 'AacEncSt'
-appendNextFrame ::
-  (MonadReader Encoder m) =>
-  [AacFrame rate channels aot] ->
-  Maybe (V.Vector Word8) ->
-  m [AacFrame rate channels aot]
-appendNextFrame acc = maybe (return acc) (fmap (: acc) . mkNextFrame)
-  where
-    mkNextFrame es = do
-      len <- fromIntegral <$> asks frameSize
-      return (MkFrame () () (MkAacBuffer es len))
+    Right
+      encRes@MkEncodeResult {} -> do
+        alreadyConsumed <- atomicModifyIORef (samplesInBufferRef e) (0,)
+        let acc' =
+              MkFrame
+                ()
+                ()
+                ( MkAacBuffer
+                    (encodeResultSamples encRes)
+                    ( MkTicks
+                        ( encodeResultConsumedSamplesPerChannel encRes
+                            + alreadyConsumed
+                        )
+                    )
+                ) :
+              acc
+        flushUntilEof acc'
+    Right
+      MkEncodeResultNotFinished {encodeResultConsumedSamplesPerChannel} -> do
+        modifyIORef (samplesInBufferRef e) (+ encodeResultConsumedSamplesPerChannel)
+        return (reverse acc)
 
 makeLenses ''AacEncoderInfo

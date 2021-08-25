@@ -42,7 +42,7 @@ encodeSecondsOfSilence t =
   runStdoutLoggingT $
     runResourceT $
       runConduit $
-        yieldNextFrame (MkFrame () () pcmAudioSeconds)
+        replicateM_ 5 (yieldNextFrame (MkFrame () () pcmAudioSeconds))
           .| traceShowC 1 "pcm"
           .| encodeLinearToAacC encoderConfig
           .| setSequenceNumberAndTimestampC

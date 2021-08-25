@@ -1,5 +1,9 @@
 # Changes
 
+## 0.7.1
+
+* Fix duration generation
+
 ## 0.7.0
 
 * Switch to unliftio

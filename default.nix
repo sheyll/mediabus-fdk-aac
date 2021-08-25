@@ -27,7 +27,12 @@ let
                 enableExecutableProfiling = withProfiling;
                 ghcOptions = if withProfiling then [ "-fprof-auto" ] else [];
               };
-              packages.mediabus-fdk-aac.components.tests.examples = {
+              packages.mediabus-fdk-aac.components.exes.mediabus-fdk-aac-example = {
+                pkgconfig = lib.mkForce [ [ fdk_aac ] ];
+                enableExecutableProfiling = withProfiling;
+                ghcOptions = if withProfiling then [ "-fprof-auto" ] else [];
+              };
+              packages.mediabus-fdk-aac.components.tests.tests = {
                 # HACK make 'cabal test' work
                 # https://github.com/input-output-hk/haskell.nix/issues/231#issuecomment-731699727
                 build-tools = [

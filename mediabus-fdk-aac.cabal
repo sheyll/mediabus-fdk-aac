@@ -1,6 +1,6 @@
 cabal-version:       2.4
 name:                mediabus-fdk-aac
-version:             0.7.0
+version:             0.7.1
 synopsis:            Mediabus plugin for the Frauenhofer ISO-14496-3 AAC FDK
 description:         Please see README.md
 homepage:            https://github.com/sheyll/mediabus-fdk-aac
@@ -35,6 +35,7 @@ library
                      , GADTs
                      , GeneralizedNewtypeDeriving
                      , KindSignatures
+                     , LambdaCase
                      , MultiParamTypeClasses
                      , NamedFieldPuns
                      , OverloadedStrings
@@ -51,7 +52,7 @@ library
                      , TypeOperators
                      , TypeSynonymInstances
                      , UnicodeSyntax
-  build-depends:       base >= 4.12 && < 5
+  build-depends:       base >= 4.14 && < 5
                      , bytestring
                      , conduit
                      , conduit-combinators
@@ -121,15 +122,13 @@ benchmark encoder-benchmark
                     , monad-logger
                     , time
                     , criterion
+                    , mediabus
                     , mediabus-fdk-aac
-                    , mediabus ^>= 0.8
                     , conduit
                     , vector <13
   ghc-options:      -threaded -Wall -funbox-strict-fields -fno-warn-unused-do-bind
 
-
-test-suite examples
-  type:                exitcode-stdio-1.0
+executable mediabus-fdk-aac-example
   hs-source-dirs:      examples
   main-is:             Main.hs
   default-language:    Haskell2010
@@ -148,6 +147,7 @@ test-suite examples
                      , GADTs
                      , GeneralizedNewtypeDeriving
                      , KindSignatures
+                     , LambdaCase
                      , MultiParamTypeClasses
                      , NamedFieldPuns
                      , OverloadedStrings
@@ -171,9 +171,71 @@ test-suite examples
                     , monad-logger
                     , time
                     , criterion
+                    , mediabus
                     , mediabus-fdk-aac
-                    , mediabus ^>= 0.8
+                    , resourcet
+                    , monad-logger
                     , conduit
                     , vector <13
                     , unliftio
+  ghc-options:      -threaded -Wall -funbox-strict-fields -fno-warn-unused-do-bind -rtsopts -O1
+
+test-suite tests
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      tests
+  main-is:             Spec.hs
+  other-modules:       Data.MediaBus.FdkAac.Conduit.EncoderSpec
+  default-language:    Haskell2010
+  default-extensions:  BangPatterns
+                     , ConstraintKinds
+                     , CPP
+                     , DataKinds
+                     , DefaultSignatures
+                     , DeriveDataTypeable
+                     , DeriveFunctor
+                     , DeriveGeneric
+                     , DuplicateRecordFields
+                     , FlexibleInstances
+                     , FlexibleContexts
+                     , FunctionalDependencies
+                     , GADTs
+                     , GeneralizedNewtypeDeriving
+                     , KindSignatures
+                     , LambdaCase
+                     , MultiParamTypeClasses
+                     , NamedFieldPuns
+                     , OverloadedStrings
+                     , QuasiQuotes
+                     , RecordWildCards
+                     , RankNTypes
+                     , ScopedTypeVariables
+                     , StandaloneDeriving
+                     , TemplateHaskell
+                     , TupleSections
+                     , TypeApplications
+                     , TypeFamilies
+                     , TypeInType
+                     , TypeOperators
+                     , TypeSynonymInstances
+                     , UnicodeSyntax
+  -- HACK make cabal test work in nix-shell
+  -- https://github.com/obsidiansystems/cardano-node/commit/1d500566fe628f9e603244b55c2c524965bd66ff
+  -- build-tool-depends:  hspec-discover:hspec-discover
+  -- END OF HACK
+  build-depends:      base ^>= 4.14
+                    , deepseq
+                    , ghc-prim
+                    , hspec
+                    , lens
+                    , monad-logger
+                    , time
+                    , random
+                    , QuickCheck
+                    , mediabus
+                    , mediabus-fdk-aac
+                    , mtl
+                    , conduit
+                    , vector <13
+                    , unliftio
+
   ghc-options:      -threaded -Wall -funbox-strict-fields -fno-warn-unused-do-bind -rtsopts -O1
