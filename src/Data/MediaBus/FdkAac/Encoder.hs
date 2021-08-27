@@ -64,7 +64,7 @@ data instance Audio r c (Aac aot) = MkAacBuffer
   { aacFrameMediaData :: !(V.Vector Word8),
     aacFrameDuration :: !(Ticks64 r)
   }
-  deriving (Generic)
+  deriving (Generic, Eq)
 
 instance
   (KnownRate r, KnownChannelLayout c, Show (AacAotProxy aot)) =>
@@ -124,8 +124,8 @@ instance
           . shows aacFrameDuration
           . showString ", data: "
           . showsPrec 11 (V.length aacFrameMediaData)
-          . showString " bytes starting with: "
-          . showsPrec 11 (aacFrameMediaData)
+          . showString " starting with: "
+          . showsPrec 11 (V.take 12 aacFrameMediaData)
       )
 
 instance
@@ -147,8 +147,8 @@ instance
   CanSegment (Audio r c (Aac aot))
   where
   splitAfterDuration dpx aac =
-    if getStaticDuration dpx == getDuration aac
-      then Just (MkSegment aac, mempty)
+    if dpx == getDuration aac
+      then Just (aac, mempty)
       else Nothing
 
 -- ** Aac Configuration
@@ -222,7 +222,7 @@ data AacEncoderInfo (rate :: Rate) (channels :: Type) (aot :: AacAot) = MkAacEnc
     -- C pointer in 'encoderHandle'.
     _aacEncoderInfoId :: String
   }
-  deriving (Generic)
+  deriving (Generic, Eq)
 
 instance NFData (AacEncoderInfo r c a)
 
@@ -420,7 +420,7 @@ encodeAllFrames dIn acc
                   ()
                   ()
                   ( MkAacBuffer
-                      (encodeResultSamples  encRes)
+                      (encodeResultSamples encRes)
                       ( MkTicks
                           ( encodeResultConsumedSamplesPerChannel encRes
                               + alreadyConsumed
@@ -445,7 +445,15 @@ flushAacEncoder ::
   m [AacFrame r channels aot]
 flushAacEncoder = do
   e <- ask
-  $logDebug (fromString (printf "flushing: %s" (show e)))
+  unprocessedSamples <- readIORef (samplesInBufferRef e)
+  $logDebug
+    ( fromString
+        ( printf
+            "flushing: %s - the encoder contains %i unprocessed samples "
+            (show e)
+            unprocessedSamples
+        )
+    )
   flushUntilEof []
 
 -- | (Internal) Flush until the encoder returns the EOF return code.

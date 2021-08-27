@@ -1,6 +1,6 @@
 cabal-version:       2.4
 name:                mediabus-fdk-aac
-version:             0.7.1
+version:             0.7.2
 synopsis:            Mediabus plugin for the Frauenhofer ISO-14496-3 AAC FDK
 description:         Please see README.md
 homepage:            https://github.com/sheyll/mediabus-fdk-aac
@@ -60,7 +60,7 @@ library
                      , deepseq
                      , inline-c
                      , lens
-                     , mediabus ^>= 0.8
+                     , mediabus ^>= 0.9
                      , monad-logger
                      , mtl
                      , random

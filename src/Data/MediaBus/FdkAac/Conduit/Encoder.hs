@@ -16,6 +16,7 @@ import Data.Tagged
 import Data.Typeable
 import GHC.TypeLits
 import Text.Printf (printf)
+import UnliftIO
 
 --  * Conduit Based 'Stream' Encoding
 
@@ -56,17 +57,42 @@ encodeLinearToAacC aacCfg = do
   runReaderC enc (encodeThenFlush info)
   where
     encodeThenFlush info = do
-      awaitForever go
+      hadDataRef <- newIORef False
+      awaitForever (go hadDataRef)
       enc <- ask
-      $logDebug (fromString (printf "end of input for AAC encoding conduit: %s" (show enc)))
-      aacs <- lift flushAacEncoder
-      Prelude.mapM_ yieldNextFrame aacs
-      $logDebug (fromString (printf "yielded all flushed AAC encoded media: %s" (show enc)))
+      $logDebug
+        (fromString (printf "end of input for AAC encoding conduit: %s" (show enc)))
+      flushIfNecessary hadDataRef
       where
-        go (MkStream (Next f)) = do
+        go hadDataRef (MkStream (Next f)) = do
+          writeIORef hadDataRef True
           aacs <- lift (encodeLinearToAac f)
           Prelude.mapM_ yieldNextFrame aacs
-        go (MkStream (Start (MkFrameCtx fi _ _ _))) = do
-          lift flushAacEncoder >>= Prelude.mapM_ yieldNextFrame
+        go hadDataRef (MkStream (Start (MkFrameCtx fi _ _ _))) = do
+          enc <- ask
+          $logDebug
+            ( fromString
+                (printf "start frame received, flushing AAC encoded media: %s" (show enc))
+            )
+          flushIfNecessary hadDataRef
           let outStart = MkFrameCtx fi () () info
           yieldStartFrameCtx outStart
+
+        flushIfNecessary hadDataRef = do
+          enc <- ask
+          hadData <- atomicModifyIORef hadDataRef (False,)
+          if hadData
+            then do
+              lift flushAacEncoder >>= Prelude.mapM_ yieldNextFrame
+              $logDebug
+                ( fromString
+                    (printf "yielded all flushed AAC encoded media: %s" (show enc))
+                )
+            else do
+              $logDebug
+                ( fromString
+                    ( printf
+                        "encoder never received any input, not flushing encoder: %s"
+                        (show enc)
+                    )
+                )
