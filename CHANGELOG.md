@@ -1,5 +1,9 @@
 # Changes
 
+## 0.7.2
+
+* Update to mediabus-0.9.0
+
 ## 0.7.1
 
 * Fix duration generation
