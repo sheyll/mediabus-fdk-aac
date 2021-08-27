@@ -187,7 +187,6 @@ spec = do
                 .| setSequenceNumberAndTimestampC @_ @(Hz 16000) @_ @Word32 @Word64
                 .| consume
             )
-      replicateM_ 10 (liftIO (putStrLn "******************************************************************************************"))
       sum (map getDuration output) `shouldBe` getDuration input
 
 exampleConfig :: AacEncoderConfig (Hz 16000) Mono 'LowComplexity
