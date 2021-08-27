@@ -1,6 +1,6 @@
 # Changes
 
-## 0.7.2
+## 0.7.2, 0.7.3
 
 * Update to mediabus-0.9.0
 
