@@ -1,5 +1,9 @@
 # Changes
 
+## 1.0.0
+
+* Add a `LogSource` for all messages in this library
+
 ## 0.7.2, 0.7.3
 
 * Update to mediabus-0.9.0

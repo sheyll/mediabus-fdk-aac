@@ -11,12 +11,12 @@ import Control.Monad.Logger
 import Control.Monad.Reader.Class (ask)
 import Data.MediaBus
 import Data.MediaBus.FdkAac.Encoder
-import Data.String
 import Data.Tagged
 import Data.Typeable
 import GHC.TypeLits
 import Text.Printf (printf)
 import UnliftIO
+import Data.MediaBus.FdkAac.InternalLogging
 
 --  * Conduit Based 'Stream' Encoding
 
@@ -52,7 +52,7 @@ encodeLinearToAacC ::
     ()
 encodeLinearToAacC aacCfg = do
   (Tagged enc, info) <- lift $ aacEncoderAllocate aacCfg
-  $logDebug (fromString (printf "allocated AAC encoder: %s, config: %s, info: %s" (show enc) (show aacCfg) (show info)))
+  dbg (printf "allocated AAC encoder: %s, config: %s, info: %s" (show enc) (show aacCfg) (show info))
 
   runReaderC enc (encodeThenFlush info)
   where
@@ -60,8 +60,7 @@ encodeLinearToAacC aacCfg = do
       hadDataRef <- newIORef False
       awaitForever (go hadDataRef)
       enc <- ask
-      $logDebug
-        (fromString (printf "end of input for AAC encoding conduit: %s" (show enc)))
+      dbg (printf "end of input for AAC encoding conduit: %s" (show enc))
       flushIfNecessary hadDataRef
       where
         go hadDataRef (MkStream (Next f)) = do
@@ -70,10 +69,7 @@ encodeLinearToAacC aacCfg = do
           Prelude.mapM_ yieldNextFrame aacs
         go hadDataRef (MkStream (Start (MkFrameCtx fi _ _ _))) = do
           enc <- ask
-          $logDebug
-            ( fromString
-                (printf "start frame received, flushing AAC encoded media: %s" (show enc))
-            )
+          dbg (printf "start frame received, flushing AAC encoded media: %s" (show enc))
           flushIfNecessary hadDataRef
           let outStart = MkFrameCtx fi () () info
           yieldStartFrameCtx outStart
@@ -84,15 +80,8 @@ encodeLinearToAacC aacCfg = do
           if hadData
             then do
               lift flushAacEncoder >>= Prelude.mapM_ yieldNextFrame
-              $logDebug
-                ( fromString
-                    (printf "yielded all flushed AAC encoded media: %s" (show enc))
-                )
+              dbg (printf "yielded all flushed AAC encoded media: %s" (show enc))
             else do
-              $logDebug
-                ( fromString
-                    ( printf
-                        "encoder never received any input, not flushing encoder: %s"
-                        (show enc)
-                    )
-                )
+              dbg (printf
+                     "encoder never received any input, not flushing encoder: %s"
+                     (show enc))

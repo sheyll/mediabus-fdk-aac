@@ -41,11 +41,12 @@ import Control.Lens
 import Control.Monad.Logger
 import Control.Monad.Reader.Class (MonadReader (..))
 import Control.Monad.Trans.Reader (ReaderT)
+import Data.Default
 import Data.Kind
 import Data.MediaBus
 import Data.MediaBus.FdkAac.EncoderFdkWrapper
+import Data.MediaBus.FdkAac.InternalLogging
 import Data.Proxy
-import Data.String
 import Data.Tagged
 import qualified Data.Vector.Storable as V
 import Data.Word
@@ -85,6 +86,12 @@ instance
 
 instance
   (KnownRate r, KnownChannelLayout c, Show (AacAotProxy aot)) =>
+  Default (Audio r c (Aac aot))
+  where
+  def = mempty
+
+instance
+  (KnownRate r, KnownChannelLayout c, Show (AacAotProxy aot)) =>
   IsMedia (Audio r c (Aac aot))
 
 instance
@@ -95,10 +102,10 @@ instance
   type MediaTo (Audio r c (Aac aot)) = Audio r c (Aac aot)
   media = iso id id
 
-instance HasMediaBuffer (Audio r c (Aac aot)) (Audio r c (Aac aot)) where
-  type MediaBufferFrom (Audio r c (Aac aot)) = MediaBuffer Word8
-  type MediaBufferTo (Audio r c (Aac aot)) = MediaBuffer Word8
-  mediaBuffer =
+instance HasMediaBufferLens (Audio r c (Aac aot)) (Audio r c (Aac aot)) where
+  type MediaBufferElemFrom (Audio r c (Aac aot)) = Word8
+  type MediaBufferElemTo (Audio r c (Aac aot)) = Word8
+  mediaBufferLens =
     lens
       (MkMediaBuffer . aacFrameMediaData)
       (\aacFrame (MkMediaBuffer v) -> aacFrame {aacFrameMediaData = v})
@@ -318,29 +325,27 @@ aacEncoderAllocate ::
 aacEncoderAllocate (Tagged cfg) = do
   let destroyAndLog enc =
         do
-          $logDebug (fromString (printf "%s destroying" (show enc)))
+          dbg (printf "%s destroying" (show enc))
           res <- liftIO (destroy enc)
           case res of
             AacEncOk ->
-              $logInfo (fromString (printf "%s destroyed" (show enc)))
+              out (printf "%s destroyed" (show enc))
             other ->
-              $logError
-                ( fromString
-                    ( printf
-                        "%s failed to destroy: %s"
-                        (show enc)
-                        (show other)
-                    )
+              err
+                ( printf
+                    "%s failed to destroy: %s"
+                    (show enc)
+                    (show other)
                 )
 
   (rkey, eres) <- do
     logger <- askLoggerIO
     allocate (create cfg) ((`runLoggingT` logger) . Prelude.mapM_ destroyAndLog)
   case eres of
-    Left err -> do
-      $logError (fromString (printf "encoder allocation failed: %s" (show err)))
+    Left errMsg -> do
+      err (printf "encoder allocation failed: %s" (show errMsg))
       release rkey
-      throwIO err
+      throwIO errMsg
     Right enc@MkEncoder {encoderDelay, frameSize, audioSpecificConfig} -> do
       let i =
             MkAacEncoderInfo
@@ -349,7 +354,7 @@ aacEncoderAllocate (Tagged cfg) = do
                 _aacEncoderInfoAudioSpecificConfig = audioSpecificConfig,
                 _aacEncoderInfoId = show enc
               }
-      $logInfo (fromString (printf "allocated: %s" (show i)))
+      out (printf "allocated: %s" (show i))
       return (Tagged enc, i)
 
 -- * Stateful Encoding
@@ -374,7 +379,7 @@ encodeLinearToAac ::
   Frame someSeq someTicks (Audio rate channels (Raw S16)) ->
   m [AacFrame rate channels aot]
 encodeLinearToAac (MkFrame _ _ !aIn) =
-  let dIn = V.unsafeCast (aIn ^. mediaBuffer . mediaBufferVector)
+  let dIn = V.unsafeCast (aIn ^. mediaBufferLens . mediaBufferVector)
    in encodeAllFrames dIn []
 
 -- | (Internal) Convert linear audio to AAC encoded audio with the given encoder settings,
@@ -399,12 +404,12 @@ encodeAllFrames dIn acc
   | otherwise = do
     e <- ask
     eres <- liftIO $ encode e dIn
-    $logDebug (fromString (printf "encoding: %s encode result: %s" (show e) (show eres)))
+    dbg (printf "encoding: %s encode result: %s" (show e) (show eres))
     case eres of
-      Left err -> do
+      Left errMsg -> do
         writeIORef (samplesInBufferRef e) 0
-        $logError (fromString (printf "encoding: %s failed: %s" (show e) (show err)))
-        throwIO err
+        err (printf "encoding: %s failed: %s" (show e) (show errMsg))
+        throwIO errMsg
       Right MkEncodeResultEof -> do
         writeIORef (samplesInBufferRef e) 0
         return (reverse acc)
@@ -446,13 +451,11 @@ flushAacEncoder ::
 flushAacEncoder = do
   e <- ask
   unprocessedSamples <- readIORef (samplesInBufferRef e)
-  $logDebug
-    ( fromString
-        ( printf
-            "flushing: %s - the encoder contains %i unprocessed samples "
-            (show e)
-            unprocessedSamples
-        )
+  dbg
+    ( printf
+        "flushing: %s - the encoder contains %i unprocessed samples "
+        (show e)
+        unprocessedSamples
     )
   flushUntilEof []
 
@@ -464,11 +467,11 @@ flushUntilEof ::
 flushUntilEof acc = do
   e <- ask
   eres <- liftIO $ flush e
-  $logDebug (fromString (printf "flushing %s: encode result: %s" (show e) (show eres)))
+  dbg (printf "flushing %s: encode result: %s" (show e) (show eres))
   case eres of
-    Left err -> do
-      $logError (fromString (printf "flushing %s: failed: %s" (show e) (show err)))
-      throwIO err
+    Left errMsg -> do
+      wrn (printf "flushing %s: failed: %s" (show e) (show errMsg))
+      throwIO errMsg
     Right MkEncodeResultEof ->
       return (reverse acc)
     Right
