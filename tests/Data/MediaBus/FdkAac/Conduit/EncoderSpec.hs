@@ -40,7 +40,8 @@ mkTestInputs generateStartFrame randomSeed =
                   ( MkFrame
                       ts
                       sn
-                      ( pcmMediaBuffer . mediaBufferVector
+                      ( rawPcmAudioBuffer
+                          . mediaBufferVector
                           # V.fromListN
                             len
                             (fromInteger <$> xxx)
@@ -191,22 +192,3 @@ spec = do
 
 exampleConfig :: AacEncoderConfig (Hz 16000) Mono 'LowComplexity
 exampleConfig = aacEncoderConfig (Proxy @(Audio (Hz 16000) Mono (Aac 'LowComplexity)))
-
-startEachSegmentC ::
-  (Monad m) =>
-  (s -> t -> FrameCtx i' s t p') ->
-  ConduitT (Stream i s t p (Segment c)) (Stream i' s t p' c) m ()
-startEachSegmentC mkFrameCtx = do
-  evalStateC False $
-    awaitForever $ \case
-      MkStream (Start fctx) -> do
-        hadStart <- get
-        unless hadStart $ do
-          put True
-          yieldStartFrameCtx (mkFrameCtx (_frameCtxSeqNumRef fctx) (_frameCtxTimestampRef fctx))
-      MkStream (Next frm) -> do
-        hadStart <- get
-        unless hadStart $ do
-          yieldStartFrameCtx (mkFrameCtx (_frameSeqNum frm) (_frameTimestamp frm))
-        yieldNextFrame frm .| forgetSegmentationC
-        put False
