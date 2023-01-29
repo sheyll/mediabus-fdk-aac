@@ -18,7 +18,6 @@ module Data.MediaBus.FdkAac.EncoderFdkWrapper
 where
 
 import Control.Exception
-import Data.Coerce
 import Data.Int
 import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Storable.Mutable as VM
@@ -28,6 +27,7 @@ import Foreign.ForeignPtr (mallocForeignPtrBytes, withForeignPtr)
 import qualified Language.C.Inline as C
 import Text.Printf
 import UnliftIO
+import Unsafe.Coerce
 
 C.context (C.baseCtx <> C.vecCtx)
 
@@ -56,7 +56,8 @@ create
       configAfterburner
     } = do
     let confBufMaxLen = 255 :: CUInt
-    confBufC <- mallocForeignPtrBytes (fromIntegral confBufMaxLen)
+    confBufC  <- mallocForeignPtrBytes (fromIntegral confBufMaxLen)
+
     ((encDelayC, confBufSizeC, frameSizeC, aacEncoderCfgErrorC, errorCodeC), hPtr) <-
       withForeignPtr confBufC $ \confBufP ->
         C.withPtrs $ \(encDelayP, confBufSizeP, frameSizeP, aacEncoderCfgErrorP, errorCodeP) ->
@@ -186,7 +187,7 @@ create
                 encoderDelay = fromIntegral encDelayC,
                 frameSize = fromIntegral frameSizeC,
                 unsafeOutBuffer = outV,
-                audioSpecificConfig = coerce asc,
+                audioSpecificConfig = V.unsafeCoerceVector asc,
                 samplesInBufferRef = inBufRef
               }
 
@@ -302,7 +303,7 @@ instance Show Encoder where
 -- | Encode Samples.
 encode :: Encoder -> V.Vector Word16 -> IO (Either EncodeFailure EncodeResult)
 encode enc@MkEncoder {encoderHandle, unsafeOutBuffer} !vecW16 = do
-  let vec = coerce vecW16
+  let vec = unsafeCoerce vecW16
   toEncodeResult vec enc
     =<< C.withPtrs
       ( \(numOutBytesP, numInSamplesP, numAncBytesP) ->
@@ -436,8 +437,8 @@ toEncodeResult vec MkEncoder {unsafeOutBuffer, channelCount} ((numOutBytes, numI
                     Right
                       MkEncodeResult
                         { encodeResultConsumedSamplesPerChannel = consumedFrames,
-                          encodeResultLeftOverInput = coerce leftOverInput,
-                          encodeResultSamples = coerce samples
+                          encodeResultLeftOverInput = unsafeCoerce leftOverInput,
+                          encodeResultSamples = unsafeCoerce samples
                         }
 
 -- | Result of 'encode'

@@ -51,6 +51,7 @@ import Data.Tagged
 import qualified Data.Vector.Storable as V
 import Data.Word
 import GHC.Generics (Generic)
+import GHC.IORef (atomicModifyIORef'_)
 import GHC.TypeLits
 import Text.Printf
 import UnliftIO
@@ -407,19 +408,19 @@ encodeAllFrames dIn acc
     dbg (printf "encoding: %s encode result: %s" (show e) (show eres))
     case eres of
       Left errMsg -> do
-        writeIORef (samplesInBufferRef e) 0
+        liftIO $ atomicWriteIORef (samplesInBufferRef e) 0
         err (printf "encoding: %s failed: %s" (show e) (show errMsg))
         throwIO errMsg
       Right MkEncodeResultEof -> do
-        writeIORef (samplesInBufferRef e) 0
+        liftIO $ atomicWriteIORef (samplesInBufferRef e) 0
         return (reverse acc)
       Right
         MkEncodeResultNotFinished {encodeResultConsumedSamplesPerChannel} -> do
-          modifyIORef (samplesInBufferRef e) (+ encodeResultConsumedSamplesPerChannel)
+          liftIO $ atomicModifyIORef'_ (samplesInBufferRef e) (+ encodeResultConsumedSamplesPerChannel)
           return (reverse acc)
       Right
         encRes@MkEncodeResult {} -> do
-          alreadyConsumed <- atomicModifyIORef (samplesInBufferRef e) (0,)
+          !alreadyConsumed <- atomicModifyIORef' (samplesInBufferRef e) (0,)
           let acc' =
                 MkFrame
                   ()
@@ -476,7 +477,7 @@ flushUntilEof acc = do
       return (reverse acc)
     Right
       encRes@MkEncodeResult {} -> do
-        alreadyConsumed <- atomicModifyIORef (samplesInBufferRef e) (0,)
+        alreadyConsumed <- atomicModifyIORef' (samplesInBufferRef e) (0,)
         let acc' =
               MkFrame
                 ()
@@ -493,7 +494,7 @@ flushUntilEof acc = do
         flushUntilEof acc'
     Right
       MkEncodeResultNotFinished {encodeResultConsumedSamplesPerChannel} -> do
-        modifyIORef (samplesInBufferRef e) (+ encodeResultConsumedSamplesPerChannel)
+        liftIO $ atomicModifyIORef'_ (samplesInBufferRef e) (+ encodeResultConsumedSamplesPerChannel)
         return (reverse acc)
 
 makeLenses ''AacEncoderInfo

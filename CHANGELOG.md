@@ -1,5 +1,10 @@
 # Changes
 
+## 2.0.0
+
+* Update to mediabus-2.0.0
+* Add a flake.nix and cleanup old nix stuff
+
 ## 1.0.0
 
 * Add a `LogSource` for all messages in this library

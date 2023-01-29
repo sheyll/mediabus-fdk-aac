@@ -36,7 +36,7 @@ encodeSecondsOfSilence ::
         SeqNum64
         (Ticks64 (Hz 16000))
         (AacEncoderInfo (Hz 16000) c 'HighEfficiency)
-        [Frame SeqNum64 (Ticks64 (Hz 16000)) (Audio (Hz 16000) c (Aac 'HighEfficiency))]
+        (Frames SeqNum64 (Ticks64 (Hz 16000)) (Audio (Hz 16000) c (Aac 'HighEfficiency)))
     ]
 encodeSecondsOfSilence t =
   runStdoutLoggingT $

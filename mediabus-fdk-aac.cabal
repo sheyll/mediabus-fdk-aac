@@ -1,6 +1,6 @@
 cabal-version:       2.4
 name:                mediabus-fdk-aac
-version:             1.0.0
+version:             2.0.0
 synopsis:            Mediabus plugin for the Frauenhofer ISO-14496-3 AAC FDK
 description:         Please see README.md
 homepage:            https://github.com/sheyll/mediabus-fdk-aac
@@ -8,7 +8,7 @@ license:             BSD-3-Clause
 license-file:        LICENSE
 author:              Sven Heyll
 maintainer:          svh@posteo.de
-copyright:           2016-2021 Sven Heyll, Lindenbaum GmbH
+copyright:           2016-2023 Sven Heyll, Lindenbaum GmbH
 category:            Sound
 build-type:          Simple
 
@@ -19,7 +19,7 @@ library
                      , Data.MediaBus.FdkAac
   other-modules:       Data.MediaBus.FdkAac.EncoderFdkWrapper
                      , Data.MediaBus.FdkAac.InternalLogging
-  ghc-options:       -Wall -funbox-strict-fields -fno-warn-unused-do-bind
+  ghc-options:       -Wall -funbox-strict-fields -fno-warn-unused-do-bind -fno-full-laziness
   default-language:    Haskell2010
   default-extensions:  BangPatterns
                      , ConstraintKinds
@@ -45,6 +45,7 @@ library
                      , RankNTypes
                      , ScopedTypeVariables
                      , StandaloneDeriving
+                     , StrictData
                      , TemplateHaskell
                      , TupleSections
                      , TypeApplications
@@ -62,7 +63,7 @@ library
                      , data-default
                      , inline-c
                      , lens
-                     , mediabus ^>= 1.0
+                     , mediabus ^>= 2
                      , monad-logger
                      , mtl
                      , random
@@ -109,6 +110,7 @@ benchmark encoder-benchmark
                      , RankNTypes
                      , ScopedTypeVariables
                      , StandaloneDeriving
+                     , StrictData
                      , TemplateHaskell
                      , TupleSections
                      , TypeApplications
@@ -117,7 +119,7 @@ benchmark encoder-benchmark
                      , TypeOperators
                      , TypeSynonymInstances
                      , UnicodeSyntax
-  build-depends:      base ^>= 4.14
+  build-depends:      base >= 4.14 && < 5
                     , deepseq
                     , ghc-prim
                     , lens
@@ -128,7 +130,7 @@ benchmark encoder-benchmark
                     , mediabus-fdk-aac
                     , conduit
                     , vector <13
-  ghc-options:      -threaded -Wall -funbox-strict-fields -fno-warn-unused-do-bind
+  ghc-options:      -threaded -Wall -funbox-strict-fields -fno-warn-unused-do-bind -fno-full-laziness
 
 executable mediabus-fdk-aac-example
   hs-source-dirs:      examples
@@ -158,6 +160,7 @@ executable mediabus-fdk-aac-example
                      , RankNTypes
                      , ScopedTypeVariables
                      , StandaloneDeriving
+                     , StrictData
                      , TemplateHaskell
                      , TupleSections
                      , TypeApplications
@@ -166,7 +169,7 @@ executable mediabus-fdk-aac-example
                      , TypeOperators
                      , TypeSynonymInstances
                      , UnicodeSyntax
-  build-depends:      base ^>= 4.14
+  build-depends:      base >= 4.14 && < 5
                     , deepseq
                     , ghc-prim
                     , lens
@@ -179,7 +182,7 @@ executable mediabus-fdk-aac-example
                     , conduit
                     , vector <13
                     , unliftio
-  ghc-options:      -threaded -Wall -funbox-strict-fields -fno-warn-unused-do-bind -rtsopts -O1
+  ghc-options:      -threaded -Wall -funbox-strict-fields -fno-warn-unused-do-bind -rtsopts -O1  -fno-full-laziness
 
 test-suite tests
   type:                exitcode-stdio-1.0
@@ -211,6 +214,7 @@ test-suite tests
                      , RankNTypes
                      , ScopedTypeVariables
                      , StandaloneDeriving
+                     , StrictData
                      , TemplateHaskell
                      , TupleSections
                      , TypeApplications
@@ -223,7 +227,7 @@ test-suite tests
   -- https://github.com/obsidiansystems/cardano-node/commit/1d500566fe628f9e603244b55c2c524965bd66ff
   -- build-tool-depends:  hspec-discover:hspec-discover
   -- END OF HACK
-  build-depends:      base ^>= 4.14
+  build-depends:      base >= 4.14 && < 5
                     , deepseq
                     , ghc-prim
                     , hspec
@@ -239,4 +243,4 @@ test-suite tests
                     , vector <13
                     , unliftio
 
-  ghc-options:      -threaded -Wall -funbox-strict-fields -fno-warn-unused-do-bind -rtsopts -O1
+  ghc-options:      -threaded -Wall -funbox-strict-fields -fno-warn-unused-do-bind -rtsopts -O1  -fno-full-laziness
